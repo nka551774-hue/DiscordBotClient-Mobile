@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/painting.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -405,9 +404,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       } catch (_) {}
     }
 
+    final resolvedGuild = guild!;
     // Pick first viewable text channel sorted by position
-    final candidates = guild.channels
-        .where((c) => c.isMessageable && canViewChannel(guild!, c))
+    final candidates = resolvedGuild.channels
+        .where((c) => c.isMessageable && canViewChannel(resolvedGuild, c))
         .toList()
       ..sort((a, b) => a.position.compareTo(b.position));
 

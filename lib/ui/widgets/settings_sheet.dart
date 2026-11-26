@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 
