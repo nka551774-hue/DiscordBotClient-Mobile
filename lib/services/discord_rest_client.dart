@@ -108,10 +108,12 @@ class DiscordRestClient {
       );
     }
     String? appId;
+    String? appDescription;
     try {
       final appRaw = await _request('GET', '/oauth2/applications/@me')
           as Map<String, dynamic>;
       appId = appRaw['id']?.toString();
+      appDescription = appRaw['description'] as String?;
     } catch (_) {
       appId = meRaw['id']?.toString();
     }
@@ -123,6 +125,11 @@ class DiscordRestClient {
       discriminator: meRaw['discriminator']?.toString() ?? '0',
       globalName: meRaw['global_name'] as String?,
       avatar: meRaw['avatar'] as String?,
+      banner: meRaw['banner'] as String?,
+      accentColor: meRaw['accent_color'] as int?,
+      bio: (appDescription != null && appDescription.trim().isNotEmpty)
+          ? appDescription.trim()
+          : (meRaw['bio'] as String?),
       applicationId: appId ?? meRaw['id']?.toString(),
     );
   }

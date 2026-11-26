@@ -11,7 +11,7 @@ class EcoSettings {
   final bool showPerformanceHud;
 
   const EcoSettings({
-    this.oledBlackMode = false,
+    this.oledBlackMode = true,
     this.ecoPowerSaving = true,
     this.backgroundSuspendSeconds = 25,
     this.enableMessageContentIntent = true,
@@ -91,7 +91,7 @@ class EcoSettings {
 
   factory EcoSettings.fromJson(Map<String, dynamic> json) {
     return EcoSettings(
-      oledBlackMode: json['oledBlackMode'] as bool? ?? false,
+      oledBlackMode: json['oledBlackMode'] as bool? ?? true,
       ecoPowerSaving: json['ecoPowerSaving'] as bool? ?? true,
       backgroundSuspendSeconds: json['backgroundSuspendSeconds'] as int? ?? 25,
       enableMessageContentIntent:
@@ -111,6 +111,9 @@ class BotAccount {
   final String discriminator;
   final String? globalName;
   final String? avatar;
+  final String? banner;
+  final int? accentColor;
+  final String? bio;
   final String? applicationId;
 
   const BotAccount({
@@ -120,6 +123,9 @@ class BotAccount {
     required this.discriminator,
     this.globalName,
     this.avatar,
+    this.banner,
+    this.accentColor,
+    this.bio,
     this.applicationId,
   });
 
@@ -128,7 +134,7 @@ class BotAccount {
 
   String get tag =>
       (discriminator == '0' || discriminator.isEmpty)
-          ? '@$username'
+          ? username
           : '$username#$discriminator';
 
   String avatarUrl({int size = 64}) {
@@ -139,6 +145,11 @@ class BotAccount {
     return 'https://cdn.discordapp.com/avatars/$id/$avatar.webp?size=$size';
   }
 
+  String? bannerUrl({int size = 512}) {
+    if (banner == null || banner!.isEmpty) return null;
+    return 'https://cdn.discordapp.com/banners/$id/$banner.webp?size=$size';
+  }
+
   Map<String, dynamic> toJson() => {
         'token': token,
         'id': id,
@@ -146,6 +157,9 @@ class BotAccount {
         'discriminator': discriminator,
         'globalName': globalName,
         'avatar': avatar,
+        'banner': banner,
+        'accentColor': accentColor,
+        'bio': bio,
         'applicationId': applicationId,
       };
 
@@ -157,6 +171,9 @@ class BotAccount {
       discriminator: json['discriminator']?.toString() ?? '0',
       globalName: json['globalName'] as String?,
       avatar: json['avatar'] as String?,
+      banner: json['banner'] as String?,
+      accentColor: json['accentColor'] as int?,
+      bio: json['bio'] as String?,
       applicationId: json['applicationId']?.toString(),
     );
   }

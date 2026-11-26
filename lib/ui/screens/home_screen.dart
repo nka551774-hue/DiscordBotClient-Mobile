@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../models/discord_models.dart';
@@ -11,9 +12,12 @@ import '../widgets/guild_tools_sheet.dart';
 import '../widgets/message_tile.dart';
 import '../widgets/settings_sheet.dart';
 
-/// 1:1 Official Discord Mobile App UI:
-/// - 4 Bottom Tabs: Servers, Messages, Notifications, You
-/// - Full-screen slide-in Chat View on channel/DM tap (with Android/iOS back gesture)
+/// 1:1 recreation of the latest 2025/2026 Discord Mobile "You Bar" UI
+/// matching the user's uploaded screenshots:
+/// - Left Onyx Server Squircles Rail + Top DM Circle
+/// - Right Rounded-Top (#14151A) Channel / DM Card with Search + Invite + 頻道與身分組 + INFO ⌄
+/// - Bottom Floating Cosmic "You Bar" Capsule (Avatar + Status Ring + Name ⌄ + Status + Bell Badge Pill)
+/// - Tap You Bar -> Opens Screenshot 1's Full Modal Profile Sheet (Banner + X + Thought Bubble + 4 Sub-tabs + Bottom 4-Icon Dock)
 class HomeScreen extends StatefulWidget {
   final BotClientController controller;
 
@@ -24,7 +28,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentTab = 0; // 0: Servers, 1: Messages, 2: Notifications, 3: You
   bool _chatOpenOnPhone = false;
   final _dmSearchCtrl = TextEditingController();
   String _dmFilter = '';
@@ -33,6 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _dmSearchCtrl.dispose();
     super.dispose();
+  }
+
+  static String _statusLabelZh(String st) {
+    switch (st) {
+      case 'idle':
+        return '閒置';
+      case 'dnd':
+        return '請勿打擾';
+      case 'invisible':
+        return '隱形';
+      default:
+        return '線上';
+    }
   }
 
   void _openChannelChat(String channelId, {String? guildId}) {
@@ -46,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _chatOpenOnPhone = true);
   }
 
-  /// Exact "New Message" by User ID modal from VencordDBCPlugin/utils/create-dm-by-id.ts
   Future<void> _showNewMessageModal(DiscordPalette p) async {
     final idCtrl = TextEditingController();
     String? errorText;
@@ -69,12 +84,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(),
-                        child: Text('Cancel',
+                        child: Text('取消',
                             style: TextStyle(color: p.textSecondary)),
                       ),
                       const Expanded(
                         child: Text(
-                          'New Message',
+                          '新訊息',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 17,
@@ -94,16 +109,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 if (!RegExp(r'^[1-9]\d{16,19}$')
                                     .hasMatch(uid)) {
                                   setModalState(() {
-                                    errorText =
-                                        'Select a user or enter a valid Discord User ID.';
+                                    errorText = '請輸入有效的 Discord User ID';
                                   });
                                   return;
                                 }
                                 if (uid ==
                                     widget.controller.activeAccount?.id) {
                                   setModalState(() {
-                                    errorText =
-                                        'You cannot open a DM with yourself.';
+                                    errorText = '無法與自己開啟私訊';
                                   });
                                   return;
                                 }
@@ -114,14 +127,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 try {
                                   await widget.controller.openDmWithUser(uid);
                                   if (ctx.mounted) Navigator.of(ctx).pop();
-                                  setState(() {
-                                    _currentTab = 1;
-                                    _chatOpenOnPhone = true;
-                                  });
+                                  setState(() => _chatOpenOnPhone = true);
                                 } catch (e) {
                                   setModalState(() {
                                     opening = false;
-                                    errorText = 'Could not open DM: $e';
+                                    errorText = '無法開啟私訊：$e';
                                   });
                                 }
                               },
@@ -134,30 +144,22 @@ class _HomeScreenState extends State<HomeScreen> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text('Chat'),
+                            : const Text('開始對話'),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Center(
-                    child: Text(
-                      'Choose one person to start a DM.',
-                      style: TextStyle(color: p.textMuted, fontSize: 12.5),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: idCtrl,
                     keyboardType: TextInputType.number,
                     autofocus: true,
                     style: TextStyle(color: p.textPrimary, fontSize: 15),
                     decoration: InputDecoration(
-                      prefixText: 'To: ',
+                      prefixText: '收件者：',
                       prefixStyle: TextStyle(color: p.textMuted, fontSize: 15),
-                      hintText: 'Search or enter a User ID',
+                      hintText: '搜尋或輸入 User ID',
                       hintStyle: TextStyle(color: p.textMuted, fontSize: 15),
-                      helperText: errorText ??
-                          'Select one person or enter their User ID.',
+                      helperText: errorText ?? '輸入單一使用者的 User ID 以開啟私訊。',
                       helperStyle: TextStyle(
                         color: errorText != null
                             ? DiscordPalette.red
@@ -167,13 +169,140 @@ class _HomeScreenState extends State<HomeScreen> {
                       filled: true,
                       fillColor: p.elevatedBg,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide.none,
                       ),
                     ),
                   ),
                 ],
               ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showNotificationsSheet(BotClientController ctrl, DiscordPalette p) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final items = ctrl.notifications;
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.78,
+          minChildSize: 0.45,
+          maxChildSize: 0.94,
+          builder: (_, sCtrl) {
+            return Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: p.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
+                  child: Row(
+                    children: [
+                      Text(
+                        '通知',
+                        style: TextStyle(
+                          color: p.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: p.border),
+                Expanded(
+                  child: items.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.notifications_none_rounded,
+                                  size: 46, color: p.textMuted),
+                              const SizedBox(height: 10),
+                              Text(
+                                '目前還沒有任何通知',
+                                style: TextStyle(
+                                  color: p.textSecondary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: sCtrl,
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) =>
+                              Divider(height: 1, color: p.border),
+                          itemBuilder: (_, idx) {
+                            final msg = items[idx];
+                            final guild = ctrl.findGuildById(msg.guildId);
+                            final ch = ctrl.findChannelById(msg.channelId);
+                            final whereLabel = guild != null
+                                ? '${guild.name}  •  #${ch?.name ?? 'channel'}'
+                                : '私人訊息';
+
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: NetworkImage(
+                                    msg.author.avatarUrl(size: 64)),
+                              ),
+                              title: Text(
+                                whereLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: p.textMuted, fontSize: 12),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    msg.author.displayName,
+                                    style: TextStyle(
+                                      color: p.textPrimary,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    msg.content.isEmpty
+                                        ? '[附件 / Embed]'
+                                        : msg.content,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        color: p.textSecondary, fontSize: 13.5),
+                                  ),
+                                ],
+                              ),
+                              onTap: () async {
+                                Navigator.of(ctx).pop();
+                                if (msg.guildId != null) {
+                                  await ctrl.selectGuild(msg.guildId!);
+                                }
+                                _openChannelChat(msg.channelId,
+                                    guildId: msg.guildId);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
             );
           },
         );
@@ -188,20 +317,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final isWide = MediaQuery.of(context).size.width >= 760;
 
     if (isWide) {
-      // Tablet / Landscape split layout
       return Scaffold(
-        backgroundColor: p.chatBg,
+        backgroundColor: p.railBg,
         body: SafeArea(
           child: Row(
             children: [
               SizedBox(
-                width: 340,
-                child: Column(
-                  children: [
-                    Expanded(child: _buildActiveTabBody(ctrl, p)),
-                    _buildDiscordBottomBar(ctrl, p),
-                  ],
-                ),
+                width: 360,
+                child: _buildMainYouBarLayout(ctrl, p),
               ),
               VerticalDivider(width: 1, color: p.border),
               Expanded(
@@ -212,7 +335,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   onBack: () {},
                   onOpenDmFromChat: (uid) async {
                     await ctrl.openDmWithUser(uid);
-                    setState(() => _currentTab = 1);
                   },
                 ),
               ),
@@ -222,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // Phone layout: 1:1 Official Discord Mobile (Tabs <-> Slide-in Full-Screen Chat)
+    // Phone: Full-Screen Chat View (slides back to Rail+Panel+YouBar on back or right-edge swipe)
     if (_chatOpenOnPhone && ctrl.selectedChannel != null) {
       return PopScope(
         canPop: false,
@@ -231,471 +353,404 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() => _chatOpenOnPhone = false);
           }
         },
-        child: Scaffold(
-          backgroundColor: p.chatBg,
-          body: SafeArea(
-            child: _DiscordChatPane(
-              controller: ctrl,
-              palette: p,
-              showBackButton: true,
-              onBack: () => setState(() => _chatOpenOnPhone = false),
-              onOpenDmFromChat: (uid) async {
-                await ctrl.openDmWithUser(uid);
-                setState(() {
-                  _currentTab = 1;
-                  _chatOpenOnPhone = true;
-                });
-              },
+        child: GestureDetector(
+          onHorizontalDragEnd: (details) {
+            if ((details.primaryVelocity ?? 0) > 420) {
+              setState(() => _chatOpenOnPhone = false);
+            }
+          },
+          child: Scaffold(
+            backgroundColor: p.chatBg,
+            body: SafeArea(
+              child: _DiscordChatPane(
+                controller: ctrl,
+                palette: p,
+                showBackButton: true,
+                onBack: () => setState(() => _chatOpenOnPhone = false),
+                onOpenDmFromChat: (uid) async {
+                  await ctrl.openDmWithUser(uid);
+                  setState(() => _chatOpenOnPhone = true);
+                },
+              ),
             ),
           ),
         ),
       );
     }
 
+    // Main Home Screen matching Screenshot 2 (Rail + Rounded Panel + Floating You Bar)
     return Scaffold(
-      backgroundColor: p.sidebarBg,
+      backgroundColor: p.railBg,
       body: SafeArea(
-        child: _buildActiveTabBody(ctrl, p),
+        bottom: false,
+        child: _buildMainYouBarLayout(ctrl, p),
       ),
-      bottomNavigationBar: _buildDiscordBottomBar(ctrl, p),
     );
   }
 
-  Widget _buildActiveTabBody(BotClientController ctrl, DiscordPalette p) {
-    switch (_currentTab) {
-      case 0:
-        return _ServersTabView(
-          controller: ctrl,
-          palette: p,
-          onChannelTap: (ch) => _openChannelChat(ch.id, guildId: ch.guildId),
-        );
-      case 1:
-        return _buildMessagesTab(ctrl, p);
-      case 2:
-        return _buildNotificationsTab(ctrl, p);
-      case 3:
-        return _YouProfileTabView(controller: ctrl, palette: p);
-      default:
-        return const SizedBox.shrink();
-    }
-  }
+  Widget _buildMainYouBarLayout(BotClientController ctrl, DiscordPalette p) {
+    final isDmMode = ctrl.selectedGuildId == null;
+    final guilds = ctrl.guilds;
+    final selectedGuild = ctrl.selectedGuild;
+    final iconPx = ctrl.ecoSettings.avatarSize;
 
-  /// TAB 1: Official Discord Mobile "Messages" View
-  Widget _buildMessagesTab(BotClientController ctrl, DiscordPalette p) {
-    final allDms = ctrl.dmChannels;
-    final dms = _dmFilter.isEmpty
-        ? allDms
-        : allDms
-            .where((c) =>
-                c.displayTitle.toLowerCase().contains(_dmFilter.toLowerCase()))
-            .toList();
-
-    return Container(
-      color: p.chatBg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
-            child: Row(
-              children: [
-                Text(
-                  'Messages',
-                  style: TextStyle(
-                    color: p.textPrimary,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const Spacer(),
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: p.inputBg,
-                    foregroundColor: p.textPrimary,
-                    visualDensity: VisualDensity.compact,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  onPressed: () => _showNewMessageModal(p),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
-                  label: const Text('New Message',
-                      style:
-                          TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-          ),
-
-          // Search Bar Pill
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: TextField(
-              controller: _dmSearchCtrl,
-              onChanged: (v) => setState(() => _dmFilter = v),
-              style: TextStyle(color: p.textPrimary, fontSize: 14.5),
-              decoration: InputDecoration(
-                hintText: 'Search',
-                hintStyle: TextStyle(color: p.textMuted, fontSize: 14.5),
-                prefixIcon:
-                    Icon(Icons.search_rounded, color: p.textMuted, size: 20),
-                filled: true,
-                fillColor: p.elevatedBg,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          Expanded(
-            child: dms.isEmpty
-                ? Center(
-                    child: Text(
-                      'No direct messages yet',
-                      style: TextStyle(color: p.textMuted, fontSize: 14),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    itemCount: dms.length,
-                    itemBuilder: (_, idx) {
-                      final ch = dms[idx];
-                      final user = ch.dmRecipient;
-                      final unread = ctrl.unreadChannelIds.contains(ch.id);
-
-                      return ListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundImage: user != null
-                              ? NetworkImage(user.avatarUrl(size: 96))
-                              : null,
-                          child: user == null
-                              ? const Icon(Icons.person)
-                              : null,
-                        ),
-                        title: Row(
+    return Stack(
+      children: [
+        // 1. Left Server Rail + Right Rounded Sheet
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Left Vertical Rail (68px) — Squircles for Servers, Circle for top DM!
+              SizedBox(
+                width: 68,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(0, 6, 0, 96),
+                  children: [
+                    // Top Direct Messages Circle Button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: GestureDetector(
+                        onTap: () => ctrl.selectDmMode(),
+                        child: Row(
                           children: [
-                            Expanded(
-                              child: Text(
-                                ch.displayTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: unread
-                                      ? p.textPrimary
-                                      : p.textSecondary,
-                                  fontWeight: unread
-                                      ? FontWeight.w700
-                                      : FontWeight.w600,
-                                  fontSize: 15.5,
-                                ),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              width: 4,
+                              height: isDmMode ? 32 : 0,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.horizontal(
+                                    right: Radius.circular(4)),
                               ),
                             ),
-                            if (user != null && user.bot)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 4.5, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: DiscordPalette.blurple,
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: const Text(
-                                  'APP',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
+                            const Spacer(),
+                            Container(
+                              width: 46,
+                              height: 46,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: isDmMode
+                                    ? DiscordPalette.blurple
+                                    : const Color(0xFF1D1E25),
+                                borderRadius:
+                                    BorderRadius.circular(isDmMode ? 14 : 23),
                               ),
+                              child: const Icon(
+                                Icons.chat_bubble_rounded,
+                                color: Colors.white,
+                                size: 21,
+                              ),
+                            ),
+                            const Spacer(),
+                            const SizedBox(width: 4),
                           ],
                         ),
-                        subtitle: Text(
-                          user != null ? '@${user.username}' : 'Direct Message',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: p.textMuted, fontSize: 13),
-                        ),
-                        onTap: () => _openChannelChat(ch.id, guildId: null),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
+                      ),
+                    ),
 
-  /// TAB 2: Official Discord Mobile "Notifications" View
-  Widget _buildNotificationsTab(BotClientController ctrl, DiscordPalette p) {
-    final items = ctrl.notifications;
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 6),
+                      child: Divider(height: 1, color: p.border),
+                    ),
 
-    return Container(
-      color: p.chatBg,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-            child: Text(
-              'Notifications',
-              style: TextStyle(
-                color: p.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          Divider(height: 1, color: p.border),
-          Expanded(
-            child: items.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.notifications_none_rounded,
-                            size: 48, color: p.textMuted),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Nothing to see here yet',
-                          style: TextStyle(
-                            color: p.textSecondary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                    // Server Squircles (matching Screenshot 2!)
+                    ...guilds.map((g) {
+                      final selected =
+                          !isDmMode && ctrl.selectedGuildId == g.id;
+                      final hasUnread = g.channels
+                          .any((c) => ctrl.unreadChannelIds.contains(c.id));
+                      final iconUrl = g.iconUrl(size: iconPx);
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.5),
+                        child: GestureDetector(
+                          onTap: () => ctrl.selectGuild(g.id),
+                          child: Row(
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 160),
+                                width: 4,
+                                height: selected
+                                    ? 34
+                                    : (hasUnread ? 8 : 0),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.horizontal(
+                                      right: Radius.circular(4)),
+                                ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                width: 46,
+                                height: 46,
+                                clipBehavior: Clip.antiAlias,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? DiscordPalette.blurple
+                                      : const Color(0xFF1E1F26),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: iconUrl != null
+                                    ? Image.network(
+                                        iconUrl,
+                                        width: 46,
+                                        height: 46,
+                                        cacheWidth: iconPx,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Text(
+                                          g.initials,
+                                          style: const TextStyle(
+                                            color: Color(0xFFD5D7DD),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13.5,
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        g.initials,
+                                        style: const TextStyle(
+                                          color: Color(0xFFD5D7DD),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13.5,
+                                        ),
+                                      ),
+                              ),
+                              const Spacer(),
+                              const SizedBox(width: 4),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(height: 1, color: p.border),
-                    itemBuilder: (_, idx) {
-                      final msg = items[idx];
-                      final guild = ctrl.findGuildById(msg.guildId);
-                      final ch = ctrl.findChannelById(msg.channelId);
-                      final whereLabel = guild != null
-                          ? '${guild.name}  •  #${ch?.name ?? 'channel'}'
-                          : 'Direct Message';
-
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundImage:
-                              NetworkImage(msg.author.avatarUrl(size: 64)),
-                        ),
-                        title: Text(
-                          whereLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              TextStyle(color: p.textMuted, fontSize: 12),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 2),
-                            Text(
-                              msg.author.displayName,
-                              style: TextStyle(
-                                color: p.textPrimary,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              msg.content.isEmpty
-                                  ? '[Attachment / Embed]'
-                                  : msg.content,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  color: p.textSecondary, fontSize: 13.5),
-                            ),
-                          ],
-                        ),
-                        onTap: () async {
-                          if (msg.guildId != null) {
-                            await ctrl.selectGuild(msg.guildId!);
-                          }
-                          _openChannelChat(msg.channelId,
-                              guildId: msg.guildId);
-                        },
                       );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Official Discord Mobile Bottom Navigation Bar: Servers | Messages | Notifications | You
-  Widget _buildDiscordBottomBar(BotClientController ctrl, DiscordPalette p) {
-    final acc = ctrl.activeAccount;
-    final statusColor = _statusColor(ctrl.botStatus);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: p.bottomBarBg,
-        border: Border(top: BorderSide(color: p.border, width: 0.6)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 58,
-          child: Row(
-            children: [
-              _bottomNavItem(
-                p,
-                index: 0,
-                label: 'Servers',
-                iconWidget: DiscordClydeLogo(
-                  size: 23,
-                  color: _currentTab == 0 ? p.textPrimary : p.textMuted,
-                ),
-              ),
-              _bottomNavItem(
-                p,
-                index: 1,
-                label: 'Messages',
-                iconWidget: Icon(
-                  _currentTab == 1
-                      ? Icons.chat_bubble_rounded
-                      : Icons.chat_bubble_outline_rounded,
-                  size: 22,
-                  color: _currentTab == 1 ? p.textPrimary : p.textMuted,
-                ),
-              ),
-              _bottomNavItem(
-                p,
-                index: 2,
-                label: 'Notifications',
-                badgeCount: ctrl.notifications.length,
-                iconWidget: Icon(
-                  _currentTab == 2
-                      ? Icons.notifications_rounded
-                      : Icons.notifications_none_rounded,
-                  size: 24,
-                  color: _currentTab == 2 ? p.textPrimary : p.textMuted,
-                ),
-              ),
-              _bottomNavItem(
-                p,
-                index: 3,
-                label: 'You',
-                iconWidget: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(1.5),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _currentTab == 3
-                              ? p.textPrimary
-                              : Colors.transparent,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: CircleAvatar(
-                        radius: 11,
-                        backgroundImage: acc != null
-                            ? NetworkImage(acc.avatarUrl(size: 64))
-                            : null,
-                      ),
-                    ),
-                    Positioned(
-                      right: -1,
-                      bottom: -1,
-                      child: Container(
-                        width: 9,
-                        height: 9,
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
-                          border:
-                              Border.all(color: p.bottomBarBg, width: 1.8),
-                        ),
-                      ),
-                    ),
+                    }),
                   ],
+                ),
+              ),
+
+              // Right Rounded Card (#14151A, topLeft & topRight 24px matching Screenshot 2)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: p.sidebarBg,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                      ),
+                      border: Border(
+                        top: BorderSide(color: p.border, width: 0.9),
+                        left: BorderSide(color: p.border, width: 0.9),
+                        right: BorderSide(color: p.border, width: 0.5),
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: isDmMode
+                        ? _buildDmPanel(ctrl, p)
+                        : _buildGuildPanel(ctrl, p, selectedGuild),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-      ),
+
+        // 2. Bottom Floating Cosmic "You Bar" Capsule (1:1 Screenshot 2!)
+        Positioned(
+          left: 10,
+          right: 10,
+          bottom: MediaQuery.of(context).padding.bottom + 8,
+          child: _buildFloatingYouBar(ctrl, p),
+        ),
+      ],
     );
   }
 
-  Widget _bottomNavItem(
-    DiscordPalette p, {
-    required int index,
-    required String label,
-    required Widget iconWidget,
-    int badgeCount = 0,
-  }) {
-    final selected = _currentTab == index;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          if (index == 0 &&
-              widget.controller.selectedGuildId == null &&
-              widget.controller.guilds.isNotEmpty) {
-            widget.controller
-                .selectGuild(widget.controller.guilds.first.id);
-          }
-          setState(() => _currentTab = index);
-        },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  /// Exact Floating "You Bar" at the bottom of Screenshot 2!
+  Widget _buildFloatingYouBar(BotClientController ctrl, DiscordPalette p) {
+    final acc = ctrl.activeAccount;
+    if (acc == null) return const SizedBox.shrink();
+
+    final badgeCount =
+        ctrl.notifications.length + ctrl.unreadChannelIds.length;
+    final bannerUrl = acc.bannerUrl(size: 480);
+
+    return GestureDetector(
+      onTap: () => showYouProfileModal(context, ctrl),
+      onLongPress: () => showSwitchAccountsSheet(context, ctrl),
+      child: Container(
+        height: 60,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(color: const Color(0xFF2D3142), width: 1.0),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0xAA000000),
+              blurRadius: 18,
+              offset: Offset(0, 6),
+            ),
+          ],
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0xFF181A24),
+              Color(0xFF172236),
+              Color(0xFF12355B),
+            ],
+          ),
+          image: bannerUrl != null
+              ? DecorationImage(
+                  image: NetworkImage(bannerUrl),
+                  fit: BoxFit.cover,
+                  colorFilter: const ColorFilter.mode(
+                    Color(0xAA10131C),
+                    BlendMode.darken,
+                  ),
+                )
+              : null,
+        ),
+        padding: const EdgeInsets.fromLTRB(7, 6, 10, 6),
+        child: Row(
           children: [
+            // Left Circular Avatar + Exact Discord Status Ring
             Stack(
               clipBehavior: Clip.none,
               children: [
-                SizedBox(
-                  height: 25,
-                  child: Center(child: iconWidget),
+                CircleAvatar(
+                  radius: 23,
+                  backgroundImage: NetworkImage(acc.avatarUrl(size: 96)),
                 ),
-                if (badgeCount > 0)
-                  Positioned(
-                    right: -6,
-                    top: -3,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: DiscordPalette.danger,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        badgeCount > 99 ? '99+' : '$badgeCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
+                Positioned(
+                  right: -1,
+                  bottom: -1,
+                  child: DiscordStatusBadge(
+                    status: ctrl.botStatus,
+                    size: 16,
+                    borderColor: const Color(0xFF181A24),
+                    borderWidth: 2.8,
                   ),
+                ),
               ],
             ),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? p.textPrimary : p.textMuted,
-                fontSize: 10.5,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            const SizedBox(width: 10),
+
+            // Middle: Display Name + Tag Pill + Chevron + Status Text
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          acc.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5.5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xBB1E2130),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(
+                              color: const Color(0xFF34384E), width: 0.6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.bolt_rounded,
+                                size: 11, color: Color(0xFFB784F7)),
+                            SizedBox(width: 2),
+                            Text(
+                              'BOT',
+                              style: TextStyle(
+                                color: Color(0xFFE3E5E8),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 18,
+                        color: Color(0xFFD5D7DD),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    ctrl.botActivityName.isNotEmpty
+                        ? ctrl.botActivityName
+                        : _statusLabelZh(ctrl.botStatus),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFFB5BAC1),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Right Bell + Red Badge Pill (matching Screenshot 2!)
+            GestureDetector(
+              onTap: () => _showNotificationsSheet(ctrl, p),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xCC0E1017),
+                  borderRadius: BorderRadius.circular(20),
+                  border:
+                      Border.all(color: const Color(0xFF282C3C), width: 0.7),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.notifications_rounded,
+                      color: Colors.white,
+                      size: 19,
+                    ),
+                    if (badgeCount > 0) ...[
+                      const SizedBox(width: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5.5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: DiscordPalette.danger,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          badgeCount > 99 ? '99+' : '$badgeCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -704,35 +759,84 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Color _statusColor(String st) {
-    switch (st) {
-      case 'idle':
-        return DiscordPalette.yellow;
-      case 'dnd':
-        return DiscordPalette.danger;
-      case 'invisible':
-        return DiscordPalette.greyStatus;
-      default:
-        return DiscordPalette.green;
+  String _formatMemberCount(int count) {
+    final s = count.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
     }
+    return buf.toString();
   }
-}
 
-/// TAB 0: Official Discord Mobile "Servers" View (Left 72px Guild Rail + Rounded Channel Sheet)
-class _ServersTabView extends StatelessWidget {
-  final BotClientController controller;
-  final DiscordPalette palette;
-  final void Function(DiscordChannel ch) onChannelTap;
+  void _showChannelQuickSearch(DiscordGuild guild, DiscordPalette p) {
+    final qCtrl = TextEditingController();
+    String q = '';
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setM) {
+          final filtered = guild.channels
+              .where((c) =>
+                  c.isMessageable &&
+                  widget.controller.canViewChannel(guild, c) &&
+                  c.name.toLowerCase().contains(q.toLowerCase()))
+              .toList();
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.75,
+            builder: (_, sCtrl) => Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: qCtrl,
+                    autofocus: true,
+                    onChanged: (v) => setM(() => q = v),
+                    style: TextStyle(color: p.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: '搜尋頻道...',
+                      prefixIcon: Icon(Icons.search_rounded, color: p.textMuted),
+                      filled: true,
+                      fillColor: p.elevatedBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: sCtrl,
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) {
+                        final ch = filtered[i];
+                        return ListTile(
+                          leading: Icon(Icons.tag_rounded, color: p.textMuted),
+                          title: Text(ch.name,
+                              style: TextStyle(color: p.textPrimary)),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            _openChannelChat(ch.id, guildId: guild.id);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-  const _ServersTabView({
-    required this.controller,
-    required this.palette,
-    required this.onChannelTap,
-  });
-
-  Future<void> _showCreateChannelDialog(
-    BuildContext context,
+  Future<void> _showCreateChannelModal(
     DiscordGuild guild,
+    DiscordPalette p,
   ) async {
     final nameCtrl = TextEditingController();
     int type = 0;
@@ -740,17 +844,17 @@ class _ServersTabView extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
-          backgroundColor: palette.cardBg,
-          title: const Text('Create Channel'),
+          backgroundColor: p.cardBg,
+          title: const Text('建立頻道'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<int>(
                 value: type,
-                dropdownColor: palette.cardBg,
+                dropdownColor: p.cardBg,
                 items: const [
-                  DropdownMenuItem(value: 0, child: Text('Text Channel')),
-                  DropdownMenuItem(value: 2, child: Text('Voice Channel')),
+                  DropdownMenuItem(value: 0, child: Text('文字頻道')),
+                  DropdownMenuItem(value: 2, child: Text('語音頻道')),
                 ],
                 onChanged: (v) {
                   if (v != null) setDlg(() => type = v);
@@ -759,14 +863,14 @@ class _ServersTabView extends StatelessWidget {
               const SizedBox(height: 10),
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(hintText: 'new-channel'),
+                decoration: const InputDecoration(hintText: '新頻道名稱'),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
+              child: const Text('取消'),
             ),
             FilledButton(
               onPressed: () async {
@@ -774,12 +878,12 @@ class _ServersTabView extends StatelessWidget {
                 if (name.isEmpty) return;
                 Navigator.of(ctx).pop();
                 try {
-                  final created = await controller.rest!
+                  final created = await widget.controller.rest!
                       .createGuildChannel(guild.id, name: name, type: type);
-                  onChannelTap(created);
+                  _openChannelChat(created.id, guildId: guild.id);
                 } catch (_) {}
               },
-              child: const Text('Create'),
+              child: const Text('建立'),
             ),
           ],
         ),
@@ -787,153 +891,18 @@ class _ServersTabView extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final guilds = controller.guilds;
-    final selectedGuild = controller.selectedGuild ??
-        (guilds.isNotEmpty ? guilds.first : null);
-    final iconPx = controller.ecoSettings.avatarSize;
+  /// Right Rounded Guild Channel Sheet (1:1 Screenshot 2!)
+  Widget _buildGuildPanel(
+    BotClientController ctrl,
+    DiscordPalette p,
+    DiscordGuild? guild,
+  ) {
+    if (guild == null) {
+      return Center(
+        child: Text('尚未加入任何伺服器', style: TextStyle(color: p.textMuted)),
+      );
+    }
 
-    return Container(
-      color: palette.railBg,
-      child: Row(
-        children: [
-          // Left Vertical Server Icons Rail (72px)
-          SizedBox(
-            width: 72,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              itemCount: guilds.length,
-              itemBuilder: (_, idx) {
-                final g = guilds[idx];
-                final selected = selectedGuild?.id == g.id;
-                final iconUrl = g.iconUrl(size: iconPx);
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: GestureDetector(
-                    onTap: () => controller.selectGuild(g.id),
-                    child: Row(
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          width: 4,
-                          height: selected ? 36 : 0,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.horizontal(
-                                right: Radius.circular(4)),
-                          ),
-                        ),
-                        const Spacer(),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          width: 48,
-                          height: 48,
-                          clipBehavior: Clip.antiAlias,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? DiscordPalette.blurple
-                                : palette.sidebarBg,
-                            borderRadius:
-                                BorderRadius.circular(selected ? 15 : 24),
-                          ),
-                          child: iconUrl != null
-                              ? Image.network(
-                                  iconUrl,
-                                  width: 48,
-                                  height: 48,
-                                  cacheWidth: iconPx,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Text(
-                                    g.initials,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13.5,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  g.initials,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13.5,
-                                  ),
-                                ),
-                        ),
-                        const Spacer(),
-                        const SizedBox(width: 4),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // Right Rounded Server Channel Panel (1:1 Discord Mobile!)
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: palette.sidebarBg,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                ),
-              ),
-              child: selectedGuild == null
-                  ? Center(
-                      child: Text(
-                        'No servers joined',
-                        style: TextStyle(color: palette.textMuted),
-                      ),
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Server Name Header
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 10, 10),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  selectedGuild.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: palette.textPrimary,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                visualDensity: VisualDensity.compact,
-                                icon: Icon(Icons.add_rounded,
-                                    color: palette.textSecondary, size: 22),
-                                onPressed: () => _showCreateChannelDialog(
-                                    context, selectedGuild),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Divider(height: 1, color: palette.border),
-                        Expanded(
-                          child: _buildCategorizedChannels(selectedGuild),
-                        ),
-                      ],
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategorizedChannels(DiscordGuild guild) {
     final allChannels = guild.channels;
     final categories = allChannels.where((c) => c.isCategory).toList()
       ..sort((a, b) => a.position.compareTo(b.position));
@@ -943,13 +912,13 @@ class _ServersTabView extends StatelessWidget {
             !c.isCategory &&
             c.parentId == null &&
             c.isMessageable &&
-            controller.canViewChannel(guild, c))
+            ctrl.canViewChannel(guild, c))
         .toList()
       ..sort((a, b) => a.position.compareTo(b.position));
 
-    final items = <Widget>[];
+    final channelWidgets = <Widget>[];
     for (final ch in uncategorized) {
-      items.add(_channelRow(ch));
+      channelWidgets.add(_buildScreenshotChannelRow(ctrl, p, guild, ch));
     }
 
     for (final cat in categories) {
@@ -958,38 +927,40 @@ class _ServersTabView extends StatelessWidget {
               !c.isCategory &&
               c.parentId == cat.id &&
               c.isMessageable &&
-              controller.canViewChannel(guild, c))
+              ctrl.canViewChannel(guild, c))
           .toList()
         ..sort((a, b) => a.position.compareTo(b.position));
       if (children.isEmpty) continue;
 
-      final collapsed = controller.isCategoryCollapsed(cat.id);
-      items.add(
+      final collapsed = ctrl.isCategoryCollapsed(cat.id);
+      // Category Header: "INFO ⌄" with chevron AFTER text (matching Screenshot 2!)
+      channelWidgets.add(
         InkWell(
-          onTap: () => controller.toggleCategoryCollapse(cat.id),
+          onTap: () => ctrl.toggleCategoryCollapse(cat.id),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 14, 10, 4),
+            padding: const EdgeInsets.fromLTRB(16, 16, 14, 6),
             child: Row(
               children: [
+                Flexible(
+                  child: Text(
+                    cat.name.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: p.textMuted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
                 Icon(
                   collapsed
                       ? Icons.keyboard_arrow_right_rounded
                       : Icons.keyboard_arrow_down_rounded,
                   size: 16,
-                  color: palette.textMuted,
-                ),
-                const SizedBox(width: 3),
-                Expanded(
-                  child: Text(
-                    cat.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: palette.textMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  color: p.textMuted,
                 ),
               ],
             ),
@@ -999,332 +970,409 @@ class _ServersTabView extends StatelessWidget {
 
       if (!collapsed) {
         for (final ch in children) {
-          items.add(_channelRow(ch));
+          channelWidgets.add(_buildScreenshotChannelRow(ctrl, p, guild, ch));
         }
       }
     }
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      children: items,
-    );
-  }
-
-  Widget _channelRow(DiscordChannel ch) {
-    final selected = controller.selectedChannelId == ch.id;
-    final unread = controller.unreadChannelIds.contains(ch.id);
-
-    IconData icon = Icons.tag_rounded;
-    if (ch.type == 2) icon = Icons.volume_up_rounded;
-    if (ch.type == 5) icon = Icons.campaign_rounded;
-    if (ch.type == 11 || ch.type == 12) icon = Icons.subdirectory_arrow_right;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => onChannelTap(ch),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(
-            color: selected ? palette.inputBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
+      padding: const EdgeInsets.only(bottom: 92),
+      children: [
+        // 1. Server Title + Badge + Chevron + Member Count + Search + Invite (1:1 Screenshot 2)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                icon,
-                size: 19,
-                color: selected || unread
-                    ? palette.textPrimary
-                    : palette.textMuted,
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  ch.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected || unread
-                        ? palette.textPrimary
-                        : palette.textSecondary,
-                    fontWeight:
-                        selected || unread ? FontWeight.w700 : FontWeight.w500,
-                    fontSize: 15,
-                  ),
-                ),
-              ),
-              if (unread && !selected)
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// TAB 3: Official Discord Mobile "You" Profile Screen
-class _YouProfileTabView extends StatelessWidget {
-  final BotClientController controller;
-  final DiscordPalette palette;
-
-  const _YouProfileTabView({
-    required this.controller,
-    required this.palette,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final acc = controller.activeAccount;
-    if (acc == null) return const SizedBox.shrink();
-
-    final created = snowflakeCreatedAt(acc.id);
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    final createdStr =
-        '${months[created.month - 1]} ${created.day}, ${created.year}';
-
-    Color statusDot = DiscordPalette.green;
-    if (controller.botStatus == 'idle') statusDot = DiscordPalette.yellow;
-    if (controller.botStatus == 'dnd') statusDot = DiscordPalette.danger;
-    if (controller.botStatus == 'invisible') {
-      statusDot = DiscordPalette.greyStatus;
-    }
-
-    return Container(
-      color: palette.sidebarBg,
-      child: ListView(
-        children: [
-          // Top Banner + Gear Icon + Avatar Overlap (1:1 Discord Mobile "You")
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                height: 128,
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF5865F2), Color(0xFF343C99)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 12,
-                right: 14,
+              GestureDetector(
+                onTap: () => _showCreateChannelModal(guild, p),
                 child: Row(
-                  children: [
-                    _bannerCircleBtn(
-                      icon: Icons.swap_horiz_rounded,
-                      onTap: () => showSwitchAccountsSheet(context, controller),
-                    ),
-                    const SizedBox(width: 8),
-                    _bannerCircleBtn(
-                      icon: Icons.settings_rounded,
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                DiscordSettingsScreen(controller: controller),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                left: 18,
-                bottom: -42,
-                child: GestureDetector(
-                  onTap: () => showDiscordStatusSheet(context, controller),
-                  child: Stack(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(5),
-                        decoration: BoxDecoration(
-                          color: palette.sidebarBg,
-                          shape: BoxShape.circle,
-                        ),
-                        child: CircleAvatar(
-                          radius: 40,
-                          backgroundImage:
-                              NetworkImage(acc.avatarUrl(size: 128)),
-                        ),
-                      ),
-                      Positioned(
-                        right: 4,
-                        bottom: 4,
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: statusDot,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                                color: palette.sidebarBg, width: 4),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 52),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
                   children: [
                     Flexible(
                       child: Text(
-                        acc.displayName,
+                        guild.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: palette.textPrimary,
-                          fontSize: 23,
+                          color: p.textPrimary,
+                          fontSize: 19,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: DiscordPalette.blurple,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'APP',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.verified_rounded,
+                      size: 17,
+                      color: Color(0xFFD888F8),
+                    ),
+                    const SizedBox(width: 3),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 19,
+                      color: p.textMuted,
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  acc.username,
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 14.5,
-                  ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                guild.memberCount != null
+                    ? '${_formatMemberCount(guild.memberCount!)} 位成員 • 社群'
+                    : '${guild.channels.length} 個頻道 • 社群',
+                style: TextStyle(
+                  color: p.textMuted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
                 ),
-                const SizedBox(height: 16),
+              ),
+              const SizedBox(height: 12),
 
-                // Edit Status Pill Button
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: DiscordPalette.blurple,
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(22),
+              // Search Bar Button + Square Person-Add Invite Button
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _showChannelQuickSearch(guild, p),
+                      child: Container(
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: p.elevatedBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.search_rounded,
+                                size: 18, color: p.textSecondary),
+                            const SizedBox(width: 6),
+                            Text(
+                              '搜尋',
+                              style: TextStyle(
+                                color: p.textSecondary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    onPressed: () =>
-                        showDiscordStatusSheet(context, controller),
-                    icon: const Icon(Icons.circle_notifications_outlined,
-                        size: 18),
-                    label: Text(
-                      controller.botActivityName.isEmpty
-                          ? 'Edit Status'
-                          : controller.botActivityName,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () async {
+                      final ch = ctrl.selectedChannel ??
+                          (uncategorized.isNotEmpty
+                              ? uncategorized.first
+                              : null);
+                      if (ch == null || ctrl.rest == null) return;
+                      try {
+                        final url =
+                            await ctrl.rest!.createChannelInvite(ch.id);
+                        await Clipboard.setData(ClipboardData(text: url));
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('已複製邀請連結：$url')),
+                          );
+                        }
+                      } catch (_) {}
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: p.elevatedBg,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.person_add_alt_1_rounded,
+                        size: 18,
+                        color: Color(0xFFE3E5E8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        Divider(height: 1, color: p.border),
+
+        // 2. "頻道與身分組" + "新的" pill row (matching Screenshot 2!)
+        InkWell(
+          onTap: () => _showChannelQuickSearch(guild, p),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            child: Row(
+              children: [
+                Icon(Icons.manage_search_rounded,
+                    size: 21, color: p.textMuted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '頻道與身分組',
+                    style: TextStyle(
+                      color: p.textSecondary,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
-
-                // Member Since Card (matching Discord Mobile You tab)
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
                   decoration: BoxDecoration(
-                    color: palette.chatBg,
-                    borderRadius: BorderRadius.circular(14),
+                    color: const Color(0xFF1F2442),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Discord Member Since',
-                        style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        createdStr,
-                        style: TextStyle(
-                          color: palette.textPrimary,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ],
+                  child: const Text(
+                    '新的',
+                    style: TextStyle(
+                      color: Color(0xFF9AA9F7),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+        ),
+
+        Divider(height: 1, color: p.border),
+        const SizedBox(height: 6),
+
+        // 3. Channel Rows
+        ...channelWidgets,
+      ],
     );
   }
 
-  Widget _bannerCircleBtn({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: const BoxDecoration(
-          color: Color(0x77000000),
-          shape: BoxShape.circle,
+  Widget _buildScreenshotChannelRow(
+    BotClientController ctrl,
+    DiscordPalette p,
+    DiscordGuild guild,
+    DiscordChannel ch,
+  ) {
+    final selected = ctrl.selectedChannelId == ch.id;
+    final unread = ctrl.unreadChannelIds.contains(ch.id);
+    final lower = ch.name.toLowerCase();
+    final isRules = lower.contains('rule') || lower.contains('規則');
+    final isLocked = ch.permissionOverwrites.any(
+      (ow) =>
+          ow.id == guild.id &&
+          DiscordPermissions.has(ow.deny, DiscordPermissions.viewChannel),
+    );
+
+    final iconColor = (selected || unread) ? Colors.white : p.textMuted;
+
+    Widget leadingIcon;
+    if (isRules) {
+      leadingIcon =
+          Icon(Icons.fact_check_outlined, size: 20, color: iconColor);
+    } else if (ch.type == 5) {
+      leadingIcon = Icon(Icons.campaign_rounded, size: 21, color: iconColor);
+    } else if (ch.type == 2) {
+      leadingIcon = Icon(Icons.volume_up_rounded, size: 20, color: iconColor);
+    } else {
+      leadingIcon = DiscordChannelHashIcon(
+        locked: isLocked,
+        color: iconColor,
+        size: 21,
+      );
+    }
+
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        // Left-edge white semicircle dot (matching Screenshot 2!)
+        if (unread || selected)
+          Container(
+            width: 4,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.horizontal(right: Radius.circular(4)),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _openChannelChat(ch.id, guildId: guild.id),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10.5),
+              decoration: BoxDecoration(
+                color: selected ? p.selectedChannelBg : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  leadingIcon,
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(
+                      ch.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: (selected || unread)
+                            ? Colors.white
+                            : p.textSecondary,
+                        fontSize: 15.5,
+                        fontWeight: (selected || unread)
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
-        child: Icon(icon, color: Colors.white, size: 19),
-      ),
+      ],
+    );
+  }
+
+  /// Right Rounded DM Panel (when top DM circle is active)
+  Widget _buildDmPanel(BotClientController ctrl, DiscordPalette p) {
+    final allDms = ctrl.dmChannels;
+    final dms = _dmFilter.isEmpty
+        ? allDms
+        : allDms
+            .where((c) =>
+                c.displayTitle.toLowerCase().contains(_dmFilter.toLowerCase()))
+            .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 14, 10),
+          child: Row(
+            children: [
+              Text(
+                '訊息',
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _showNewMessageModal(p),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: p.elevatedBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.chat_bubble_outline_rounded,
+                          size: 16, color: p.textPrimary),
+                      const SizedBox(width: 6),
+                      Text(
+                        '新訊息',
+                        style: TextStyle(
+                          color: p.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: TextField(
+            controller: _dmSearchCtrl,
+            onChanged: (v) => setState(() => _dmFilter = v),
+            style: TextStyle(color: p.textPrimary, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: '搜尋',
+              hintStyle: TextStyle(color: p.textMuted, fontSize: 14),
+              prefixIcon:
+                  Icon(Icons.search_rounded, color: p.textMuted, size: 19),
+              filled: true,
+              fillColor: p.elevatedBg,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 9),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Expanded(
+          child: dms.isEmpty
+              ? Center(
+                  child: Text(
+                    '尚無私人訊息',
+                    style: TextStyle(color: p.textMuted, fontSize: 14),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 92),
+                  itemCount: dms.length,
+                  itemBuilder: (_, idx) {
+                    final ch = dms[idx];
+                    final user = ch.dmRecipient;
+                    final unread = ctrl.unreadChannelIds.contains(ch.id);
+
+                    return ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      leading: CircleAvatar(
+                        radius: 21,
+                        backgroundImage: user != null
+                            ? NetworkImage(user.avatarUrl(size: 96))
+                            : null,
+                        child:
+                            user == null ? const Icon(Icons.person) : null,
+                      ),
+                      title: Text(
+                        ch.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: unread ? Colors.white : p.textSecondary,
+                          fontWeight:
+                              unread ? FontWeight.w700 : FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      subtitle: Text(
+                        user != null ? user.username : '私人訊息',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: p.textMuted, fontSize: 12.5),
+                      ),
+                      onTap: () => _openChannelChat(ch.id, guildId: null),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
 
-/// Full-screen 1:1 Discord Mobile Chat View
+/// Full-Screen 1:1 Discord Mobile Chat View
 class _DiscordChatPane extends StatefulWidget {
   final BotClientController controller;
   final DiscordPalette palette;
@@ -1480,7 +1528,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               Padding(
                 padding: const EdgeInsets.all(14),
                 child: Text(
-                  'Pinned Messages',
+                  '釘選訊息',
                   style: TextStyle(
                     color: p.textPrimary,
                     fontSize: 17,
@@ -1500,7 +1548,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                     if (pins.isEmpty) {
                       return Center(
                         child: Text(
-                          "This channel doesn't have any pinned messages... yet.",
+                          '此頻道目前沒有任何釘選訊息',
                           style: TextStyle(color: p.textMuted, fontSize: 13.5),
                         ),
                       );
@@ -1527,7 +1575,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             ),
                           ),
                           subtitle: Text(
-                            m.content.isEmpty ? '[Embed / Attachment]' : m.content,
+                            m.content.isEmpty ? '[Embed / 附件]' : m.content,
                             style: TextStyle(color: p.textSecondary),
                           ),
                         );
@@ -1571,7 +1619,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     if (channel == null) {
       return Center(
         child: Text(
-          'Select a channel',
+          '選擇一個頻道開始對話',
           style: TextStyle(color: p.textMuted, fontSize: 15),
         ),
       );
@@ -1581,7 +1629,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
 
     return Column(
       children: [
-        // 1:1 Discord Mobile Top Chat Header
+        // Top Chat Header
         Container(
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1647,7 +1695,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
           ),
         ),
 
-        // Virtualized 120fps Chat Feed
+        // 120fps Virtualized Chat Feed
         Expanded(
           child: ValueListenableBuilder<bool>(
             valueListenable: ctrl.loadingMessagesNotifier,
@@ -1688,7 +1736,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                 Text(
                                   channel.isDm
                                       ? channel.displayTitle
-                                      : 'Welcome to #${channel.name}!',
+                                      : '歡迎來到 #${channel.name}！',
                                   style: TextStyle(
                                     color: p.textPrimary,
                                     fontSize: 22,
@@ -1698,8 +1746,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                 const SizedBox(height: 4),
                                 Text(
                                   channel.isDm
-                                      ? 'This is the beginning of your direct message history with ${channel.displayTitle}.'
-                                      : 'This is the start of the #${channel.name} channel.',
+                                      ? '這是您與 ${channel.displayTitle} 私人訊息紀錄的開頭。'
+                                      : '這是 #${channel.name} 頻道的起點。',
                                   style: TextStyle(
                                     color: p.textSecondary,
                                     fontSize: 14,
@@ -1815,10 +1863,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                 Expanded(
                   child: Text(
                     _editingTarget != null
-                        ? 'Editing Message'
+                        ? '正在編輯訊息'
                         : (_pendingAttachmentName != null
-                            ? 'Attachment: $_pendingAttachmentName'
-                            : 'Replying to ${_replyTarget!.author.displayName}'),
+                            ? '已附加檔案：$_pendingAttachmentName'
+                            : '回覆 ${_replyTarget!.author.displayName}'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1842,7 +1890,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
             ),
           ),
 
-        // 1:1 Discord Mobile Bottom Chat Composer Bar
+        // Bottom Chat Composer Bar
         Container(
           padding: const EdgeInsets.fromLTRB(10, 7, 10, 9),
           decoration: BoxDecoration(
@@ -1852,7 +1900,6 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Left Circular "+" Button
               GestureDetector(
                 onTap: canSend ? _pickAttachment : null,
                 child: Container(
@@ -1867,8 +1914,6 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // Rounded Pill Input + Inline VencordDBCPlugin Embed Button
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -1891,9 +1936,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                           decoration: InputDecoration(
                             hintText: canSend
                                 ? (channel.isDm
-                                    ? 'Message @${channel.displayTitle}'
-                                    : 'Message #${channel.name}')
-                                : 'You do not have permission to send messages in this channel.',
+                                    ? '傳送訊息給 @${channel.displayTitle}'
+                                    : '傳送訊息至 #${channel.name}')
+                                : '您沒有在此頻道發送訊息的權限',
                             hintStyle:
                                 TextStyle(color: p.textMuted, fontSize: 14.5),
                             border: InputBorder.none,
@@ -1929,8 +1974,6 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                   ),
                 ),
               ),
-
-              // Send Button (appears smoothly like Discord Mobile when typing/attaching)
               if (_hasText || _pendingAttachmentBytes != null || _sending) ...[
                 const SizedBox(width: 8),
                 GestureDetector(
