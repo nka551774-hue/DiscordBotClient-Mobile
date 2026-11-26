@@ -50,7 +50,7 @@ class _DiscordBotClientMobileAppState extends State<DiscordBotClientMobileApp> {
         final oled = _controller.ecoSettings.oledBlackMode;
 
         return MaterialApp(
-          title: 'DiscordBotClient Mobile',
+          title: 'Discord',
           debugShowCheckedModeBanner: false,
           theme: buildAppTheme(oledBlack: oled),
           home: _controller.initializing

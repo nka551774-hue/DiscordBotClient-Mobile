@@ -66,6 +66,28 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   final Set<String> _unreadChannelIds = <String>{};
   Set<String> get unreadChannelIds => _unreadChannelIds;
 
+  final List<DiscordMessage> _notifications = <DiscordMessage>[];
+  List<DiscordMessage> get notifications => List.unmodifiable(_notifications);
+
+  void clearAuthError() {
+    if (_authError != null) {
+      _authError = null;
+      notifyListeners();
+    }
+  }
+
+  DiscordGuild? findGuildById(String? id) => id != null ? _guilds[id] : null;
+
+  DiscordChannel? findChannelById(String channelId) {
+    if (_dmChannels.containsKey(channelId)) return _dmChannels[channelId];
+    for (final g in _guilds.values) {
+      for (final c in g.channels) {
+        if (c.id == channelId) return c;
+      }
+    }
+    return null;
+  }
+
   final Set<String> _collapsedCategoryIds = <String>{};
   bool isCategoryCollapsed(String categoryId) =>
       _collapsedCategoryIds.contains(categoryId);
@@ -206,7 +228,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   }) async {
     final token = _sanitizeToken(rawToken);
     if (token.isEmpty) {
-      _authError = '請輸入有效的 Discord Bot Token';
+      _authError = 'Token is invalid';
       notifyListeners();
       return false;
     }
@@ -282,9 +304,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       candidateRest.dispose();
       _authenticating = false;
-      _authError = e is DiscordApiException
-          ? e.message
-          : '連線至 Discord 失敗，請確認網路狀態與 Bot Token 是否正確。';
+      _authError = e is DiscordApiException ? e.message : 'Invalid token';
       notifyListeners();
       return false;
     }
@@ -319,6 +339,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _dmChannels.clear();
     _messageCache.clear();
     _unreadChannelIds.clear();
+    _notifications.clear();
     _selectedGuildId = null;
     _selectedChannelId = null;
     _gatewayState = GatewayConnectionState.disconnected;
@@ -808,7 +829,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         if (data is Map<String, dynamic>) {
           final msg = DiscordMessage.fromJson(data);
           // Auto-capture incoming Direct Messages into persistent local DM store!
-          if (msg.guildId == null && msg.author.id != _activeAccount?.id) {
+          final botId = _activeAccount?.id;
+          if (msg.guildId == null && msg.author.id != botId) {
             if (!_dmChannels.containsKey(msg.channelId)) {
               _dmChannels[msg.channelId] = DiscordChannel(
                 id: msg.channelId,
@@ -817,7 +839,24 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
                 lastMessageId: msg.id,
                 recipients: [msg.author],
               );
-              unawaited(_savePersistedDmChannels());
+            } else {
+              _dmChannels[msg.channelId] = _dmChannels[msg.channelId]!
+                  .copyWith(lastMessageId: msg.id);
+            }
+            unawaited(_savePersistedDmChannels());
+            _scheduleCoalescedNotify();
+          }
+
+          if (botId != null && msg.author.id != botId) {
+            final mentionsBot = msg.content.contains('<@$botId>') ||
+                msg.content.contains('<@!$botId>') ||
+                msg.referencedMessage?.author.id == botId ||
+                msg.guildId == null;
+            if (mentionsBot) {
+              _notifications.insert(0, msg);
+              if (_notifications.length > 50) {
+                _notifications.removeRange(50, _notifications.length);
+              }
               _scheduleCoalescedNotify();
             }
           }

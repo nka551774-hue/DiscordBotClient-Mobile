@@ -104,7 +104,7 @@ class DiscordRestClient {
     if (meRaw['bot'] != true) {
       throw const DiscordApiException(
         400,
-        '此 Token 不是機器人帳號 (Bot Token)，請確認輸入的是 Discord Developer Portal 中的 Bot Token。',
+        'This token is not a bot token',
       );
     }
     String? appId;

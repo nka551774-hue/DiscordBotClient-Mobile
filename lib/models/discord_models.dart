@@ -11,7 +11,7 @@ class EcoSettings {
   final bool showPerformanceHud;
 
   const EcoSettings({
-    this.oledBlackMode = true,
+    this.oledBlackMode = false,
     this.ecoPowerSaving = true,
     this.backgroundSuspendSeconds = 25,
     this.enableMessageContentIntent = true,
@@ -91,7 +91,7 @@ class EcoSettings {
 
   factory EcoSettings.fromJson(Map<String, dynamic> json) {
     return EcoSettings(
-      oledBlackMode: json['oledBlackMode'] as bool? ?? true,
+      oledBlackMode: json['oledBlackMode'] as bool? ?? false,
       ecoPowerSaving: json['ecoPowerSaving'] as bool? ?? true,
       backgroundSuspendSeconds: json['backgroundSuspendSeconds'] as int? ?? 25,
       enableMessageContentIntent:
@@ -1112,6 +1112,13 @@ class AuditLogEntry {
       reason: json['reason'] as String?,
     );
   }
+}
+
+DateTime snowflakeCreatedAt(String snowflake) {
+  final id = BigInt.tryParse(snowflake) ?? BigInt.zero;
+  if (id <= BigInt.zero) return DateTime.fromMillisecondsSinceEpoch(1420070400000);
+  final ms = (id >> 22).toInt() + 1420070400000;
+  return DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
 }
 
 String encodeJsonSafe(Object value) => jsonEncode(value);
