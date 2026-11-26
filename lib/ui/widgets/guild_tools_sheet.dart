@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
+import 'user_profile_sheet.dart';
 
 /// Authentic Discord Mobile Right Side-Panel / Drawer:
 /// - Channel Header + Topic
@@ -15,6 +16,7 @@ class ChannelDetailsSidePanel extends StatefulWidget {
   final VoidCallback onOpenPins;
   final void Function(String threadChannelId)? onSelectThread;
   final VoidCallback? onClosePanel;
+  final VoidCallback? onNavigateToDm;
 
   const ChannelDetailsSidePanel({
     super.key,
@@ -23,6 +25,7 @@ class ChannelDetailsSidePanel extends StatefulWidget {
     required this.onOpenPins,
     this.onSelectThread,
     this.onClosePanel,
+    this.onNavigateToDm,
   });
 
   @override
@@ -261,10 +264,6 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     final perms = widget.controller.currentChannelPermissions();
     final canManageChannels =
         DiscordPermissions.has(perms, DiscordPermissions.manageChannels);
-    final canKick =
-        DiscordPermissions.has(perms, DiscordPermissions.kickMembers);
-    final canBan =
-        DiscordPermissions.has(perms, DiscordPermissions.banMembers);
 
     final groupedBuckets = (guild != null && _members.isNotEmpty)
         ? _groupMembersByHoistedRole(guild, _members)
@@ -362,10 +361,9 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
               _memberRow(
                 p,
                 user: channel.dmRecipient!,
+                member: null,
                 displayName: channel.dmRecipient!.displayName,
                 roleColorInt: null,
-                canKick: false,
-                canBan: false,
                 guildId: null,
               ),
           ] else if (guild != null) ...[
@@ -411,10 +409,9 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                     ...bucket.members.map((m) => _memberRow(
                           p,
                           user: m.user,
+                          member: m,
                           displayName: m.effectiveName,
                           roleColorInt: m.resolveColor(guild.roles),
-                          canKick: canKick,
-                          canBan: canBan,
                           guildId: guild.id,
                         )),
                   ]),
@@ -460,10 +457,9 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
   Widget _memberRow(
     DiscordPalette p, {
     required DiscordUser user,
+    required DiscordMember? member,
     required String displayName,
     required int? roleColorInt,
-    required bool canKick,
-    required bool canBan,
     required String? guildId,
   }) {
     final nameColor =
@@ -474,7 +470,11 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
         radius: 17,
-        backgroundImage: NetworkImage(user.avatarUrl(size: 64)),
+        backgroundImage: NetworkImage(
+          member != null
+              ? member.effectiveAvatarUrl(guildId, size: 64)
+              : user.avatarUrl(size: 64),
+        ),
       ),
       title: Row(
         children: [
@@ -526,187 +526,16 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: p.textMuted, fontSize: 12),
       ),
-      onTap: () => _showUserProfileSheet(
-        p,
-        user: user,
-        displayName: displayName,
-        canKick: canKick,
-        canBan: canBan,
+      onTap: () => showUserProfileSheet(
+        context,
+        controller: widget.controller,
+        initialUser: user,
+        initialMember: member,
         guildId: guildId,
-      ),
-    );
-  }
-
-  void _showUserProfileSheet(
-    DiscordPalette p, {
-    required DiscordUser user,
-    required String displayName,
-    required bool canKick,
-    required bool canBan,
-    required String? guildId,
-  }) {
-    final created = snowflakeCreatedAt(user.id);
-    final createdStr =
-        '${created.year}年${created.month}月${created.day}日';
-    final canMessage =
-        !user.bot && user.id != widget.controller.activeAccount?.id;
-
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundImage: NetworkImage(user.avatarUrl(size: 128)),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: p.textPrimary,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            if (user.bot) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 5, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: DiscordPalette.blurple,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'APP',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        Text(
-                          user.username,
-                          style:
-                              TextStyle(color: p.textSecondary, fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: p.sidebarBg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: p.border, width: 0.7),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Discord 加入時間',
-                      style: TextStyle(
-                        color: p.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      createdStr,
-                      style: TextStyle(color: p.textPrimary, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  if (canMessage) ...[
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: DiscordPalette.blurple,
-                        ),
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          widget.onClosePanel?.call();
-                          await widget.controller.openDmWithUser(user.id);
-                        },
-                        icon: const Icon(Icons.chat_bubble_rounded, size: 16),
-                        label: const Text('傳送訊息'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  OutlinedButton(
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: user.id));
-                      Navigator.of(ctx).pop();
-                    },
-                    child: const Text('複製使用者 ID'),
-                  ),
-                ],
-              ),
-              if (guildId != null && (canKick || canBan)) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    if (canKick)
-                      TextButton(
-                        style: TextButton.styleFrom(
-                            foregroundColor: DiscordPalette.danger),
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          await widget.controller.rest
-                              ?.kickMember(guildId, user.id);
-                          _ensureMembersLoaded();
-                        },
-                        child: const Text('踢出伺服器'),
-                      ),
-                    if (canBan)
-                      TextButton(
-                        style: TextButton.styleFrom(
-                            foregroundColor: DiscordPalette.danger),
-                        onPressed: () async {
-                          Navigator.of(ctx).pop();
-                          await widget.controller.rest
-                              ?.banMember(guildId, user.id);
-                          _ensureMembersLoaded();
-                        },
-                        child: const Text('封鎖成員'),
-                      ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
+        onNavigateToDm: () {
+          widget.onClosePanel?.call();
+          widget.onNavigateToDm?.call();
+        },
       ),
     );
   }

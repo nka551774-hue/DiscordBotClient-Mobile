@@ -32,11 +32,16 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   bool get selfMute => _selfMute;
   bool _selfDeaf = false;
   bool get selfDeaf => _selfDeaf;
+  bool _voiceStateConfirmed = false;
   bool _voiceGatewayReady = false;
   bool get voiceGatewayReady => _voiceGatewayReady;
+  bool get isVoiceConnected => _voiceStateConfirmed || _voiceGatewayReady;
   String? _pendingVoiceSessionId;
   String? _pendingVoiceToken;
   String? _pendingVoiceEndpoint;
+
+  List<SoundboardSound>? _cachedDefaultSounds;
+  final Set<String> _loadedSoundboardGuildIds = <String>{};
 
   final ValueNotifier<int?> voicePingMsNotifier = ValueNotifier<int?>(null);
   final ValueNotifier<Set<String>> speakingUserIdsNotifier =
@@ -180,6 +185,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   final LinkedHashMap<String, List<DiscordMessage>> _messageCache =
       LinkedHashMap<String, List<DiscordMessage>>();
+  final LinkedHashMap<String, DiscordUser> _userProfileCache =
+      LinkedHashMap<String, DiscordUser>();
   bool _loadingOlderMessages = false;
   bool get loadingOlderMessages => _loadingOlderMessages;
 
@@ -411,15 +418,19 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _activeVoiceChannelId = null;
     _selfMute = false;
     _selfDeaf = false;
+    _voiceStateConfirmed = false;
     _voiceGatewayReady = false;
     _pendingVoiceSessionId = null;
     _pendingVoiceToken = null;
     _pendingVoiceEndpoint = null;
+    _cachedDefaultSounds = null;
+    _loadedSoundboardGuildIds.clear();
     voicePingMsNotifier.value = null;
     speakingUserIdsNotifier.value = const <String>{};
     _guilds.clear();
     _dmChannels.clear();
     _messageCache.clear();
+    _userProfileCache.clear();
     _lastReadMessageId.clear();
     _unreadChannelIds.clear();
     _notifications.clear();
@@ -753,17 +764,25 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   void _cacheMessageAuthorsInGuild(Iterable<DiscordMessage> msgs) {
     for (final m in msgs) {
       final gId = m.guildId ?? _selectedGuildId;
-      if (gId != null &&
-          _guilds.containsKey(gId) &&
-          (m.memberRoleIds.isNotEmpty || m.memberNick != null)) {
+      if (gId != null && _guilds.containsKey(gId)) {
         final g = _guilds[gId]!;
-        final nextMembers = Map<String, DiscordMember>.from(g.cachedMembers);
-        nextMembers[m.author.id] = DiscordMember(
-          user: m.author,
-          nick: m.memberNick,
-          roleIds: m.memberRoleIds,
-        );
-        _guilds[gId] = g.copyWith(cachedMembers: nextMembers);
+        final existing = g.cachedMembers[m.author.id];
+        if (existing == null ||
+            m.memberRoleIds.isNotEmpty ||
+            m.memberNick != null) {
+          final nextMembers = Map<String, DiscordMember>.from(g.cachedMembers);
+          nextMembers[m.author.id] = DiscordMember(
+            user: m.author,
+            nick: m.memberNick ?? existing?.nick,
+            guildAvatar: existing?.guildAvatar,
+            guildBanner: existing?.guildBanner,
+            roleIds: m.memberRoleIds.isNotEmpty
+                ? m.memberRoleIds
+                : (existing?.roleIds ?? const []),
+            joinedAt: existing?.joinedAt,
+          );
+          _guilds[gId] = g.copyWith(cachedMembers: nextMembers);
+        }
       }
     }
   }
@@ -1029,6 +1048,71 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  DiscordUser? getCachedUser(String userId) {
+    if (_userProfileCache.containsKey(userId)) {
+      return _userProfileCache[userId];
+    }
+    for (final dm in _dmChannels.values) {
+      for (final u in dm.recipients) {
+        if (u.id == userId) return u;
+      }
+    }
+    for (final g in _guilds.values) {
+      final m = g.cachedMembers[userId];
+      if (m != null) return m.user;
+    }
+    return null;
+  }
+
+  /// Fetches and caches full User Profile (`banner`, `accent_color`, `public_flags`)
+  /// and optional Guild Member details (`roles`, `nick`, `joined_at`, `avatar`).
+  Future<(DiscordUser?, DiscordMember?)> fetchRichUserProfile(
+    String userId, {
+    String? guildId,
+  }) async {
+    DiscordUser? user = _userProfileCache[userId];
+    DiscordMember? member =
+        guildId != null ? _guilds[guildId]?.cachedMembers[userId] : null;
+
+    if (_rest == null) return (user, member);
+
+    final futures = <Future<void>>[];
+
+    if (user == null || !user.profileFetched) {
+      futures.add(() async {
+        try {
+          final fetchedUser = await _rest!.getUser(userId);
+          _userProfileCache.remove(userId);
+          _userProfileCache[userId] = fetchedUser;
+          while (_userProfileCache.length > 120) {
+            _userProfileCache.remove(_userProfileCache.keys.first);
+          }
+          user = fetchedUser;
+        } catch (_) {}
+      }());
+    }
+
+    if (guildId != null && (member == null || member.joinedAt == null)) {
+      futures.add(() async {
+        try {
+          final fetchedMember = await _rest!.getGuildMember(guildId, userId);
+          member = fetchedMember;
+          final g = _guilds[guildId];
+          if (g != null) {
+            final nextMembers = Map<String, DiscordMember>.from(g.cachedMembers);
+            nextMembers[userId] = fetchedMember;
+            _guilds[guildId] = g.copyWith(cachedMembers: nextMembers);
+          }
+        } catch (_) {}
+      }());
+    }
+
+    if (futures.isNotEmpty) {
+      await Future.wait(futures);
+    }
+    return (user, member);
+  }
+
   Future<DiscordChannel> openDmWithUser(
     String userId, {
     bool targetIsBot = false,
@@ -1116,7 +1200,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     // If switching from another guild's voice channel, disconnect previous guild first (matching VencordDBCPlugin/utils/patches.ts!)
     final prevGuildId = _activeVoiceGuildId;
     final botId = _activeAccount?.id;
-    if (prevGuildId != null && prevGuildId != guildId) {
+    final sameGuild = prevGuildId == guildId;
+    if (prevGuildId != null && !sameGuild) {
       if (botId != null && _guilds.containsKey(prevGuildId)) {
         final pg = _guilds[prevGuildId]!;
         final nextPrevVs = Map<String, VoiceState>.from(pg.voiceStates)
@@ -1130,16 +1215,19 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         selfDeaf: _selfDeaf,
       );
       await _voiceService?.disconnect(notify: false);
+      _pendingVoiceSessionId = null;
+      _pendingVoiceToken = null;
+      _pendingVoiceEndpoint = null;
+      _voiceGatewayReady = false;
     }
 
     _activeVoiceGuildId = guildId;
     _activeVoiceChannelId = channelId;
+    _voiceStateConfirmed = false;
     _selfMute = startMuted;
     if (_selfDeaf && !startMuted) {
       _selfMute = true;
     }
-    _pendingVoiceToken = null;
-    _pendingVoiceEndpoint = null;
     speakingUserIdsNotifier.value = const <String>{};
 
     // Optimistic local voice_state update for 0ms UI feedback before Gateway round-trip
@@ -1241,6 +1329,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
     _activeVoiceGuildId = null;
     _activeVoiceChannelId = null;
+    _voiceStateConfirmed = false;
     _voiceGatewayReady = false;
     _pendingVoiceSessionId = null;
     _pendingVoiceToken = null;
@@ -1256,6 +1345,96 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       );
     }
     notifyListeners();
+  }
+
+  /// Loads custom Soundboard sounds for [guildId] + Discord's default Soundboard sounds.
+  Future<(List<SoundboardSound> guildSounds, List<SoundboardSound> otherGuildSounds, List<SoundboardSound> defaultSounds)>
+      loadSoundboardSounds(String guildId) async {
+    if (_rest != null) {
+      final tasks = <Future<void>>[];
+      if (_cachedDefaultSounds == null) {
+        tasks.add(() async {
+          try {
+            _cachedDefaultSounds = await _rest!.getDefaultSoundboardSounds();
+          } catch (_) {
+            _cachedDefaultSounds = const [];
+          }
+        }());
+      }
+      if (!_loadedSoundboardGuildIds.contains(guildId)) {
+        tasks.add(() async {
+          try {
+            final fetched = await _rest!.getGuildSoundboardSounds(guildId);
+            _loadedSoundboardGuildIds.add(guildId);
+            final g = _guilds[guildId];
+            if (g != null && fetched.isNotEmpty) {
+              _guilds[guildId] = g.copyWith(soundboardSounds: fetched);
+            }
+          } catch (_) {
+            _loadedSoundboardGuildIds.add(guildId);
+          }
+        }());
+      }
+      if (tasks.isNotEmpty) {
+        await Future.wait(tasks);
+      }
+    }
+
+    final currentSounds =
+        _guilds[guildId]?.soundboardSounds ?? const <SoundboardSound>[];
+    final otherSounds = <SoundboardSound>[];
+    for (final g in _guilds.values) {
+      if (g.id != guildId && g.soundboardSounds.isNotEmpty) {
+        otherSounds.addAll(g.soundboardSounds);
+      }
+    }
+    return (
+      currentSounds,
+      otherSounds,
+      _cachedDefaultSounds ?? const <SoundboardSound>[],
+    );
+  }
+
+  /// Plays a Soundboard sound in [channelId]. Automatically unmutes selfMute/selfDeaf
+  /// if muted so Discord's Soundboard API accepts the broadcast.
+  Future<void> playSoundboardSound(
+    String channelId,
+    SoundboardSound sound,
+  ) async {
+    if (_rest == null) {
+      throw const DiscordApiException(400, '尚未登入');
+    }
+    final gId = _activeVoiceGuildId;
+    if (gId == null || _activeVoiceChannelId != channelId) {
+      throw const DiscordApiException(400, '請先加入此語音頻道再播放音效板');
+    }
+    final botId = _activeAccount?.id;
+    final botVs = botId != null ? _guilds[gId]?.voiceStates[botId] : null;
+    if (botVs != null && (botVs.mute || botVs.deaf || botVs.suppress)) {
+      throw const DiscordApiException(403, '機器人目前被伺服器靜音或處於舞台聽眾席，無法播放音效板');
+    }
+
+    // Discord rejects send-soundboard-sound if self_mute or self_deaf is true
+    if (_selfMute || _selfDeaf) {
+      _selfMute = false;
+      _selfDeaf = false;
+      _syncOptimisticBotVoiceFlags();
+      _gateway?.sendVoiceStateUpdate(
+        guildId: gId,
+        channelId: channelId,
+        selfMute: false,
+        selfDeaf: false,
+      );
+      notifyListeners();
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+    }
+
+    final isExternal = sound.guildId != null && sound.guildId != gId;
+    await _rest!.sendSoundboardSound(
+      channelId,
+      soundId: sound.soundId,
+      sourceGuildId: isExternal ? sound.guildId : null,
+    );
   }
 
   void _tryConnectVoiceSocket() {
@@ -1299,9 +1478,26 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             currentBotUserId: _activeAccount?.id,
           );
           final prev = _guilds[parsed.id];
-          _guilds[parsed.id] = prev != null && parsed.voiceStates.isEmpty
+          final mergedGuild = prev != null && parsed.voiceStates.isEmpty
               ? parsed.copyWith(voiceStates: prev.voiceStates)
               : parsed;
+          _guilds[parsed.id] = mergedGuild;
+
+          // If bot is already connected in a voice channel on GUILD_CREATE, sync state
+          final botId = _activeAccount?.id;
+          if (botId != null && mergedGuild.voiceStates.containsKey(botId)) {
+            final ownVs = mergedGuild.voiceStates[botId]!;
+            if (ownVs.channelId != null && ownVs.channelId!.isNotEmpty) {
+              _activeVoiceGuildId = parsed.id;
+              _activeVoiceChannelId = ownVs.channelId;
+              _voiceStateConfirmed = true;
+              _selfMute = ownVs.selfMute;
+              _selfDeaf = ownVs.selfDeaf;
+              if (ownVs.sessionId.isNotEmpty) {
+                _pendingVoiceSessionId = ownVs.sessionId;
+              }
+            }
+          }
           _syncChannelReadBaseline(parsed.channels);
           if (_selectedGuildId == null && _dmChannels.isEmpty) {
             unawaited(selectGuild(parsed.id));
@@ -1347,15 +1543,22 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               if (gId == _activeVoiceGuildId) {
                 _activeVoiceGuildId = null;
                 _activeVoiceChannelId = null;
+                _voiceStateConfirmed = false;
                 _voiceGatewayReady = false;
                 unawaited(_voiceService?.disconnect(notify: false));
               }
             } else {
               _activeVoiceGuildId = gId ?? _activeVoiceGuildId;
               _activeVoiceChannelId = vs.channelId;
+              _voiceStateConfirmed = true;
+              _selfMute = vs.selfMute;
+              _selfDeaf = vs.selfDeaf;
               if (vs.sessionId.isNotEmpty) {
+                final sessionChanged = _pendingVoiceSessionId != vs.sessionId;
                 _pendingVoiceSessionId = vs.sessionId;
-                _tryConnectVoiceSocket();
+                if (sessionChanged || !_voiceGatewayReady) {
+                  _tryConnectVoiceSocket();
+                }
               }
             }
           }

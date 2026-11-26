@@ -24,6 +24,9 @@ class MessageTile extends StatefulWidget {
   final void Function(DiscordMessage msg, DiscordEmoji emoji, bool me)
       onToggleReaction;
   final void Function(String userId) onOpenDm;
+  final void Function(DiscordUser user, {DiscordMember? member})
+      onOpenUserProfile;
+  final void Function(String userId)? onTapUserMention;
 
   const MessageTile({
     super.key,
@@ -42,6 +45,8 @@ class MessageTile extends StatefulWidget {
     required this.onTogglePin,
     required this.onToggleReaction,
     required this.onOpenDm,
+    required this.onOpenUserProfile,
+    this.onTapUserMention,
   });
 
   @override
@@ -51,6 +56,20 @@ class MessageTile extends StatefulWidget {
 class _MessageTileState extends State<MessageTile> {
   double _dragOffset = 0;
   bool _triggeredHaptic = false;
+
+  void _openAuthorProfile() {
+    final msg = widget.message;
+    final cached = widget.guild?.cachedMembers[msg.author.id];
+    final member = cached ??
+        ((msg.memberRoleIds.isNotEmpty || msg.memberNick != null)
+            ? DiscordMember(
+                user: msg.author,
+                nick: msg.memberNick,
+                roleIds: msg.memberRoleIds,
+              )
+            : null);
+    widget.onOpenUserProfile(msg.author, member: member);
+  }
 
   String _formatDiscordTime(DateTime dt) {
     final now = DateTime.now();
@@ -263,6 +282,13 @@ class _MessageTileState extends State<MessageTile> {
                           icon: Icons.reply_rounded,
                           label: '回覆',
                           onTap: () => widget.onReply(message),
+                        ),
+                        Divider(height: 1, color: palette.border),
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.person_outline_rounded,
+                          label: '檢視個人資料',
+                          onTap: _openAuthorProfile,
                         ),
                         if (isOwn) ...[
                           Divider(height: 1, color: palette.border),
@@ -517,21 +543,33 @@ class _MessageTileState extends State<MessageTile> {
                                   ),
                                 ),
                                 const SizedBox(width: 6),
-                                CircleAvatar(
-                                  radius: 8,
-                                  backgroundImage: NetworkImage(
-                                    message.referencedMessage!.author
-                                        .avatarUrl(size: 32),
+                                GestureDetector(
+                                  onTap: () => widget.onOpenUserProfile(
+                                    message.referencedMessage!.author,
+                                    member: widget.guild?.cachedMembers[
+                                        message.referencedMessage!.author.id],
                                   ),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  message.referencedMessage!
-                                      .authorDisplayName(widget.guild),
-                                  style: TextStyle(
-                                    color: palette.textSecondary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 8,
+                                        backgroundImage: NetworkImage(
+                                          message.referencedMessage!.author
+                                              .avatarUrl(size: 32),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        message.referencedMessage!
+                                            .authorDisplayName(widget.guild),
+                                        style: TextStyle(
+                                          color: palette.textSecondary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(width: 5),
@@ -557,11 +595,7 @@ class _MessageTileState extends State<MessageTile> {
                           children: [
                             if (!compact)
                               GestureDetector(
-                                onTap: (!message.author.bot &&
-                                        message.author.id !=
-                                            widget.currentBotUserId)
-                                    ? () => widget.onOpenDm(message.author.id)
-                                    : null,
+                                onTap: _openAuthorProfile,
                                 child: ClipOval(
                                   child: Image.network(
                                     message.author.avatarUrl(size: avatarPx),
@@ -607,12 +641,15 @@ class _MessageTileState extends State<MessageTile> {
                                             WrapCrossAlignment.center,
                                         spacing: 5,
                                         children: [
-                                          Text(
-                                            authorName,
-                                            style: TextStyle(
-                                              color: authorColor,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 15,
+                                          GestureDetector(
+                                            onTap: _openAuthorProfile,
+                                            child: Text(
+                                              authorName,
+                                              style: TextStyle(
+                                                color: authorColor,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 15,
+                                              ),
                                             ),
                                           ),
                                           if (message.author.bot)
@@ -676,6 +713,7 @@ class _MessageTileState extends State<MessageTile> {
                                       palette: palette,
                                       guild: widget.guild,
                                       ecoMode: widget.ecoMode,
+                                      onTapUserMention: widget.onTapUserMention,
                                     ),
 
                                   if (message.attachments.isNotEmpty)

@@ -11,6 +11,7 @@ import '../widgets/embed_composer_sheet.dart';
 import '../widgets/guild_tools_sheet.dart';
 import '../widgets/message_tile.dart';
 import '../widgets/settings_sheet.dart';
+import '../widgets/user_profile_sheet.dart';
 import '../widgets/voice_channel_sheet.dart';
 
 /// Authentic 2025/2026 Discord Mobile 3-Panel Gesture Architecture:
@@ -97,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen>
       onOpenVoiceTextChat: (chId, gId) {
         _openChannelChat(chId, guildId: gId);
       },
+      onNavigateToDm: () => _animateToPanel(0.0),
     );
   }
 
@@ -134,7 +136,9 @@ class _HomeScreenState extends State<HomeScreen>
                 child: ValueListenableBuilder<int?>(
                   valueListenable: ctrl.voicePingMsNotifier,
                   builder: (_, pingMs, __) {
-                    final pingPart = pingMs != null ? ' ($pingMs ms)' : '';
+                    final effectivePing = pingMs ?? ctrl.pingMsNotifier.value;
+                    final pingPart =
+                        effectivePing != null ? ' ($effectivePing ms)' : '';
                     return Text(
                       '${voiceCh.name} • ${voiceGuild.name}$pingPart',
                       maxLines: 1,
@@ -497,6 +501,16 @@ class _HomeScreenState extends State<HomeScreen>
                           m.content.isEmpty ? '[Embed / 附件]' : m.content,
                           style: TextStyle(color: p.textSecondary),
                         ),
+                        onTap: () => showUserProfileSheet(
+                          context,
+                          controller: widget.controller,
+                          initialUser: m.author,
+                          guildId: widget.controller.selectedGuildId,
+                          onNavigateToDm: () {
+                            Navigator.of(context).pop();
+                            _animateToPanel(0.0);
+                          },
+                        ),
                       );
                     },
                   );
@@ -545,6 +559,7 @@ class _HomeScreenState extends State<HomeScreen>
                         showBackButton: false,
                         onBack: () {},
                         onToggleRightDrawer: () {},
+                        onEnsureCenterChat: () {},
                         onOpenVoiceRoom: (g, ch) => _openVoiceSheet(g, ch),
                         onSelectForumPost: (threadId) =>
                             ctrl.selectChannel(threadId, markRead: true),
@@ -700,6 +715,8 @@ class _HomeScreenState extends State<HomeScreen>
                                         onBack: () => _animateToPanel(-1.0),
                                         onToggleRightDrawer: () =>
                                             _animateToPanel(1.0),
+                                        onEnsureCenterChat: () =>
+                                            _animateToPanel(0.0),
                                         onOpenVoiceRoom: (g, ch) =>
                                             _openVoiceSheet(g, ch),
                                         onSelectForumPost: (tid) =>
@@ -764,6 +781,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   _animateToPanel(0.0);
                                 },
                                 onClosePanel: () => _animateToPanel(0.0),
+                                onNavigateToDm: () => _animateToPanel(0.0),
                               ),
                             ),
                           ),
@@ -2180,6 +2198,7 @@ class _DiscordChatPane extends StatefulWidget {
   final bool showBackButton;
   final VoidCallback onBack;
   final VoidCallback onToggleRightDrawer;
+  final VoidCallback onEnsureCenterChat;
   final void Function(DiscordGuild guild, DiscordChannel channel)
       onOpenVoiceRoom;
   final void Function(String threadChannelId) onSelectForumPost;
@@ -2191,6 +2210,7 @@ class _DiscordChatPane extends StatefulWidget {
     required this.showBackButton,
     required this.onBack,
     required this.onToggleRightDrawer,
+    required this.onEnsureCenterChat,
     required this.onOpenVoiceRoom,
     required this.onSelectForumPost,
     required this.onOpenDmFromChat,
@@ -2469,7 +2489,15 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               Expanded(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(6),
-                  onTap: widget.onToggleRightDrawer,
+                  onTap: (channel.isDm && dmUser != null)
+                      ? () => showUserProfileSheet(
+                            context,
+                            controller: ctrl,
+                            initialUser: dmUser,
+                            guildId: null,
+                            onNavigateToDm: widget.onEnsureCenterChat,
+                          )
+                      : widget.onToggleRightDrawer,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
@@ -2523,8 +2551,11 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                   onPressed: () => widget.onOpenVoiceRoom(guild, channel),
                 ),
               IconButton(
-                icon: Icon(Icons.group_rounded,
-                    color: p.textSecondary, size: 22),
+                icon: Icon(
+                  channel.isDm ? Icons.more_horiz_rounded : Icons.group_rounded,
+                  color: p.textSecondary,
+                  size: 22,
+                ),
                 onPressed: widget.onToggleRightDrawer,
               ),
             ],
@@ -2612,22 +2643,40 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Container(
-                                            width: 60,
-                                            height: 60,
-                                            decoration: BoxDecoration(
-                                              color: p.inputBg,
-                                              shape: BoxShape.circle,
+                                          if (channel.isDm && dmUser != null)
+                                            GestureDetector(
+                                              onTap: () => showUserProfileSheet(
+                                                context,
+                                                controller: ctrl,
+                                                initialUser: dmUser,
+                                                guildId: null,
+                                                onNavigateToDm:
+                                                    widget.onEnsureCenterChat,
+                                              ),
+                                              child: CircleAvatar(
+                                                radius: 34,
+                                                backgroundImage: NetworkImage(
+                                                    dmUser.avatarUrl(
+                                                        size: 128)),
+                                              ),
+                                            )
+                                          else
+                                            Container(
+                                              width: 60,
+                                              height: 60,
+                                              decoration: BoxDecoration(
+                                                color: p.inputBg,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Icon(
+                                                channel.isDm
+                                                    ? Icons
+                                                        .alternate_email_rounded
+                                                    : Icons.tag_rounded,
+                                                size: 34,
+                                                color: p.textPrimary,
+                                              ),
                                             ),
-                                            child: Icon(
-                                              channel.isDm
-                                                  ? Icons
-                                                      .alternate_email_rounded
-                                                  : Icons.tag_rounded,
-                                              size: 34,
-                                              color: p.textPrimary,
-                                            ),
-                                          ),
                                           const SizedBox(height: 12),
                                           Text(
                                             channel.isDm
@@ -2649,6 +2698,24 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                               fontSize: 14,
                                             ),
                                           ),
+                                          if (channel.isDm && dmUser != null) ...[
+                                            const SizedBox(height: 12),
+                                            OutlinedButton.icon(
+                                              onPressed: () =>
+                                                  showUserProfileSheet(
+                                                context,
+                                                controller: ctrl,
+                                                initialUser: dmUser,
+                                                guildId: null,
+                                                onNavigateToDm:
+                                                    widget.onEnsureCenterChat,
+                                              ),
+                                              icon: const Icon(
+                                                  Icons.person_outline_rounded,
+                                                  size: 17),
+                                              label: const Text('檢視個人資料'),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),
@@ -2787,6 +2854,23 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                     } catch (_) {}
                                   },
                                   onOpenDm: widget.onOpenDmFromChat,
+                                  onOpenUserProfile: (u, {member}) =>
+                                      showUserProfileSheet(
+                                    context,
+                                    controller: ctrl,
+                                    initialUser: u,
+                                    initialMember: member,
+                                    guildId: guild?.id,
+                                    onNavigateToDm: widget.onEnsureCenterChat,
+                                  ),
+                                  onTapUserMention: (uid) =>
+                                      showUserProfileById(
+                                    context,
+                                    controller: ctrl,
+                                    userId: uid,
+                                    guildId: guild?.id,
+                                    onNavigateToDm: widget.onEnsureCenterChat,
+                                  ),
                                 );
                               },
                             );

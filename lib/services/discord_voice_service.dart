@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-/// Connects to Discord's Voice Gateway v4 (`wss://<endpoint>/?v=4`) + UDP IP Discovery
-/// to maintain a genuine active Voice session, measure Voice RTT ping (ms),
+/// Connects to Discord's Voice Gateway v8 (`wss://<endpoint>/?v=8`) + UDP IP Discovery
+/// to maintain an active Voice session, measure live Voice RTT ping (ms),
 /// and stream real-time Opcode 5 SPEAKING events (green speaking ring around avatars!).
 class DiscordVoiceService {
   final void Function(String userId, bool speaking) onSpeakingChanged;
@@ -23,6 +23,7 @@ class DiscordVoiceService {
   String? _voiceToken;
   String? _endpoint;
 
+  int _lastSeq = -1;
   int? _ssrc;
   String? _serverIp;
   int? _serverPort;
@@ -52,12 +53,14 @@ class DiscordVoiceService {
     _userId = userId;
     _sessionId = sessionId;
     _voiceToken = voiceToken;
-    _endpoint = endpoint.replaceFirst(RegExp(r':\d+$'), '');
+    // Strip :80 or :443 port suffix if present so wss:// uses standard TLS 443 cleanly
+    _endpoint = endpoint.replaceFirst(RegExp(r':(80|443)$'), '');
+    _lastSeq = -1;
     _protocolSelected = false;
     _ssrcToUserId.clear();
 
     try {
-      _ws = await WebSocket.connect('wss://$_endpoint/?v=4')
+      _ws = await WebSocket.connect('wss://$_endpoint/?v=8')
           .timeout(const Duration(seconds: 12));
       _wsSub = _ws!.listen(
         _onFrame,
@@ -79,15 +82,20 @@ class DiscordVoiceService {
       return;
     }
 
+    if (pkt['seq'] is int) {
+      _lastSeq = pkt['seq'] as int;
+    }
+
     final op = pkt['op'] as int? ?? -1;
     final d = pkt['d'];
 
     switch (op) {
-      case 8: // HELLO
+      case 8: // HELLO (Voice Gateway v8)
         if (d is Map<String, dynamic>) {
-          final intervalMs = (d['heartbeat_interval'] as num?)?.round() ?? 13750;
-          _startHeartbeat(intervalMs);
+          final intervalMs =
+              (d['heartbeat_interval'] as num?)?.round() ?? 13750;
           _sendIdentify();
+          _startHeartbeat(intervalMs);
         }
         break;
 
@@ -100,13 +108,18 @@ class DiscordVoiceService {
               .map((e) => e.toString())
               .toList();
           onConnectionChanged(true);
+          // Send an immediate heartbeat once identified so RTT ping populates right away
+          _sendHeartbeatFrame();
           if (_ssrc != null && _serverIp != null && _serverPort != null) {
-            unawaited(_setupUdpDiscovery(_ssrc!, _serverIp!, _serverPort!, modes));
+            unawaited(
+              _setupUdpDiscovery(_ssrc!, _serverIp!, _serverPort!, modes),
+            );
           }
         }
         break;
 
       case 4: // SESSION_DESCRIPTION
+      case 9: // RESUMED
         onConnectionChanged(true);
         break;
 
@@ -134,6 +147,7 @@ class DiscordVoiceService {
           final rtt = DateTime.now().difference(_lastHbSent!).inMilliseconds;
           onVoicePingUpdated(rtt);
         }
+        onConnectionChanged(true);
         break;
 
       case 13: // CLIENT_DISCONNECT
@@ -155,6 +169,20 @@ class DiscordVoiceService {
         'user_id': _userId,
         'session_id': _sessionId,
         'token': _voiceToken,
+        'max_dave_protocol_version': 0,
+      },
+    });
+  }
+
+  void _sendHeartbeatFrame() {
+    if (_ws == null || _disposed) return;
+    _lastHbSent = DateTime.now();
+    // Voice Gateway v8 Heartbeat format requires `t` and `seq_ack`!
+    _sendJson({
+      'op': 3,
+      'd': {
+        't': _lastHbSent!.millisecondsSinceEpoch,
+        'seq_ack': _lastSeq >= 0 ? _lastSeq : null,
       },
     });
   }
@@ -163,12 +191,7 @@ class DiscordVoiceService {
     _heartbeatTimer?.cancel();
     final safeMs = intervalMs.clamp(5000, 45000);
     _heartbeatTimer = Timer.periodic(Duration(milliseconds: safeMs), (_) {
-      if (_ws == null || _disposed) return;
-      _lastHbSent = DateTime.now();
-      _sendJson({
-        'op': 3,
-        'd': _lastHbSent!.millisecondsSinceEpoch,
-      });
+      _sendHeartbeatFrame();
     });
   }
 
@@ -210,7 +233,6 @@ class DiscordVoiceService {
     final type = ByteData.sublistView(data).getUint16(0, Endian.big);
     if (type != 2) return;
 
-    // Extract null-terminated ASCII IP starting at byte 8 (up to byte 71)
     int end = 8;
     while (end < 72 && data[end] != 0) {
       end++;
@@ -263,6 +285,7 @@ class DiscordVoiceService {
       await _ws?.close(1000);
     } catch (_) {}
     _ws = null;
+    _lastSeq = -1;
     _protocolSelected = false;
     _ssrcToUserId.clear();
     onVoicePingUpdated(null);

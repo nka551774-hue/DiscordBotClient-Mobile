@@ -300,8 +300,11 @@ class DiscordUser {
   final String discriminator;
   final String? globalName;
   final String? avatar;
+  final String? banner;
+  final int? accentColor;
   final bool bot;
   final int publicFlags;
+  final bool profileFetched;
 
   const DiscordUser({
     required this.id,
@@ -309,12 +312,20 @@ class DiscordUser {
     this.discriminator = '0',
     this.globalName,
     this.avatar,
+    this.banner,
+    this.accentColor,
     this.bot = false,
     this.publicFlags = 0,
+    this.profileFetched = false,
   });
 
   String get displayName =>
       (globalName != null && globalName!.isNotEmpty) ? globalName! : username;
+
+  String get tag =>
+      (discriminator == '0' || discriminator == '0000' || discriminator.isEmpty)
+          ? username
+          : '$username#$discriminator';
 
   bool get isVerifiedBot => bot && (publicFlags & (1 << 16)) != 0;
 
@@ -326,25 +337,129 @@ class DiscordUser {
     return 'https://cdn.discordapp.com/avatars/$id/$avatar.webp?size=$size';
   }
 
+  String? bannerUrl({int size = 600, bool allowAnimated = false}) {
+    if (banner == null || banner!.isEmpty) return null;
+    final ext = (banner!.startsWith('a_') && allowAnimated) ? 'gif' : 'webp';
+    return 'https://cdn.discordapp.com/banners/$id/$banner.$ext?size=$size';
+  }
+
+  /// Computes ONLY genuine Discord badges earned by this user from `public_flags`.
+  List<DiscordBadgeInfo> get realBadges {
+    final list = <DiscordBadgeInfo>[];
+    if ((publicFlags & (1 << 0)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'staff',
+        description: 'Discord Staff',
+        iconHash: '5e74e9b61934fc1f67c65515d1f7e60d',
+      ));
+    }
+    if ((publicFlags & (1 << 1)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'partner',
+        description: 'Partnered Server Owner',
+        iconHash: '3f9748e53446a137a052f3454e2de41e',
+      ));
+    }
+    if ((publicFlags & (1 << 2)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad',
+        description: 'HypeSquad Events',
+        iconHash: 'bf01d1073931f921909045f3a39fd264',
+      ));
+    }
+    if ((publicFlags & (1 << 3)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'bug_hunter_level_1',
+        description: 'Discord Bug Hunter',
+        iconHash: '2717692c7dca7289b35297368a940dd0',
+      ));
+    }
+    if ((publicFlags & (1 << 6)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad_house_1',
+        description: 'HypeSquad Bravery',
+        iconHash: '8a88d63823d8a71cd5e390baa45efa02',
+      ));
+    }
+    if ((publicFlags & (1 << 7)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad_house_2',
+        description: 'HypeSquad Brilliance',
+        iconHash: '011940fd013da3f7fb926e4a1cd2e618',
+      ));
+    }
+    if ((publicFlags & (1 << 8)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad_house_3',
+        description: 'HypeSquad Balance',
+        iconHash: '3aa41de486fa12454c3761e8e223442e',
+      ));
+    }
+    if ((publicFlags & (1 << 9)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'premium_early_supporter',
+        description: 'Early Supporter',
+        iconHash: '7060786766c9c840eb3019e725d2b358',
+      ));
+    }
+    if ((publicFlags & (1 << 14)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'bug_hunter_level_2',
+        description: 'Golden Discord Bug Hunter',
+        iconHash: '848f79194d4be5ff5f81505cbd0ce1e6',
+      ));
+    }
+    if ((publicFlags & (1 << 17)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'verified_developer',
+        description: 'Early Verified Bot Developer',
+        iconHash: '6df5892e0f35b051f8b61eace34f4967',
+      ));
+    }
+    if ((publicFlags & (1 << 18)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'certified_moderator',
+        description: 'Moderator Programs Alumni',
+        iconHash: 'fee1624003e2fee35cb398e125dc479b',
+      ));
+    }
+    if ((publicFlags & (1 << 22)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'active_developer',
+        description: 'Active Developer',
+        iconHash: '6bdc42827a38498929a4920da12695d9',
+      ));
+    }
+    return list;
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'username': username,
         'discriminator': discriminator,
         'global_name': globalName,
         'avatar': avatar,
+        if (banner != null) 'banner': banner,
+        if (accentColor != null) 'accent_color': accentColor,
         'bot': bot,
         'public_flags': publicFlags,
       };
 
-  factory DiscordUser.fromJson(Map<String, dynamic> json) {
+  factory DiscordUser.fromJson(
+    Map<String, dynamic> json, {
+    bool profileFetched = false,
+  }) {
     return DiscordUser(
       id: json['id']?.toString() ?? '0',
       username: json['username'] as String? ?? 'Unknown',
       discriminator: json['discriminator']?.toString() ?? '0',
       globalName: json['global_name'] as String?,
       avatar: json['avatar'] as String?,
+      banner: json['banner'] as String?,
+      accentColor: json['accent_color'] as int?,
       bot: json['bot'] as bool? ?? false,
-      publicFlags: json['public_flags'] as int? ?? 0,
+      publicFlags: json['public_flags'] as int? ?? (json['flags'] as int? ?? 0),
+      profileFetched: profileFetched,
     );
   }
 }
@@ -352,18 +467,32 @@ class DiscordUser {
 class DiscordMember {
   final DiscordUser user;
   final String? nick;
+  final String? guildAvatar;
+  final String? guildBanner;
   final List<String> roleIds;
   final String? joinedAt;
 
   const DiscordMember({
     required this.user,
     this.nick,
+    this.guildAvatar,
+    this.guildBanner,
     this.roleIds = const [],
     this.joinedAt,
   });
 
   String get effectiveName =>
       (nick != null && nick!.isNotEmpty) ? nick! : user.displayName;
+
+  DateTime? get joinedAtDate =>
+      joinedAt != null ? DateTime.tryParse(joinedAt!)?.toLocal() : null;
+
+  String effectiveAvatarUrl(String? guildId, {int size = 128}) {
+    if (guildId != null && guildAvatar != null && guildAvatar!.isNotEmpty) {
+      return 'https://cdn.discordapp.com/guilds/$guildId/users/${user.id}/avatars/$guildAvatar.webp?size=$size';
+    }
+    return user.avatarUrl(size: size);
+  }
 
   int? resolveColor(Map<String, DiscordRole> guildRoles) {
     DiscordRole? highestColored;
@@ -402,6 +531,8 @@ class DiscordMember {
           ? DiscordUser.fromJson(userMap)
           : (fallbackUser ?? const DiscordUser(id: '0', username: 'Unknown')),
       nick: json['nick'] as String?,
+      guildAvatar: json['avatar'] as String?,
+      guildBanner: json['banner'] as String?,
       roleIds: rolesRaw.map((e) => e.toString()).toList(),
       joinedAt: json['joined_at'] as String?,
     );
@@ -786,6 +917,43 @@ class DiscordEmoji {
   }
 }
 
+class SoundboardSound {
+  final String soundId;
+  final String name;
+  final double volume;
+  final String? emojiId;
+  final String? emojiName;
+  final String? guildId;
+  final bool available;
+
+  const SoundboardSound({
+    required this.soundId,
+    required this.name,
+    this.volume = 1.0,
+    this.emojiId,
+    this.emojiName,
+    this.guildId,
+    this.available = true,
+  });
+
+  String? customEmojiUrl({int size = 48}) {
+    if (emojiId == null || emojiId!.isEmpty) return null;
+    return 'https://cdn.discordapp.com/emojis/$emojiId.webp?size=$size';
+  }
+
+  factory SoundboardSound.fromJson(Map<String, dynamic> json, {String? fallbackGuildId}) {
+    return SoundboardSound(
+      soundId: json['sound_id']?.toString() ?? '0',
+      name: json['name'] as String? ?? 'Sound',
+      volume: (json['volume'] as num?)?.toDouble() ?? 1.0,
+      emojiId: json['emoji_id']?.toString(),
+      emojiName: json['emoji_name'] as String?,
+      guildId: json['guild_id']?.toString() ?? fallbackGuildId,
+      available: json['available'] as bool? ?? true,
+    );
+  }
+}
+
 class DiscordGuild {
   final String id;
   final String name;
@@ -798,6 +966,7 @@ class DiscordGuild {
   final Map<String, DiscordRole> roles;
   final List<DiscordChannel> channels;
   final List<DiscordEmoji> emojis;
+  final List<SoundboardSound> soundboardSounds;
   final Map<String, DiscordMember> cachedMembers;
   final Map<String, VoiceState> voiceStates;
   final List<String> botRoleIds;
@@ -815,6 +984,7 @@ class DiscordGuild {
     this.roles = const {},
     this.channels = const [],
     this.emojis = const [],
+    this.soundboardSounds = const [],
     this.cachedMembers = const {},
     this.voiceStates = const {},
     this.botRoleIds = const [],
@@ -858,6 +1028,7 @@ class DiscordGuild {
     Map<String, DiscordRole>? roles,
     List<DiscordChannel>? channels,
     List<DiscordEmoji>? emojis,
+    List<SoundboardSound>? soundboardSounds,
     Map<String, DiscordMember>? cachedMembers,
     Map<String, VoiceState>? voiceStates,
     List<String>? botRoleIds,
@@ -875,6 +1046,7 @@ class DiscordGuild {
       roles: roles ?? this.roles,
       channels: channels ?? this.channels,
       emojis: emojis ?? this.emojis,
+      soundboardSounds: soundboardSounds ?? this.soundboardSounds,
       cachedMembers: cachedMembers ?? this.cachedMembers,
       voiceStates: voiceStates ?? this.voiceStates,
       botRoleIds: botRoleIds ?? this.botRoleIds,
@@ -954,6 +1126,13 @@ class DiscordGuild {
       }
     }
 
+    final soundboardRaw = json['soundboard_sounds'] as List<dynamic>? ?? const [];
+    final parsedSoundboard = soundboardRaw
+        .whereType<Map<String, dynamic>>()
+        .map((s) => SoundboardSound.fromJson(s, fallbackGuildId: guildId))
+        .where((s) => s.available && s.soundId != '0')
+        .toList();
+
     return DiscordGuild(
       id: guildId,
       name: json['name'] as String? ?? 'Server',
@@ -967,6 +1146,7 @@ class DiscordGuild {
       roles: rolesMap,
       channels: parsedChannels,
       emojis: parsedEmojis,
+      soundboardSounds: parsedSoundboard,
       cachedMembers: membersMap,
       voiceStates: voiceStatesMap,
       botRoleIds: botRoles,

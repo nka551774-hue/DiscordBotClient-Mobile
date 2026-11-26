@@ -12,6 +12,7 @@ class DiscordMarkdownView extends StatelessWidget {
   final DiscordGuild? guild;
   final bool ecoMode;
   final double fontSize;
+  final void Function(String userId)? onTapUserMention;
 
   const DiscordMarkdownView({
     super.key,
@@ -20,6 +21,7 @@ class DiscordMarkdownView extends StatelessWidget {
     this.guild,
     this.ecoMode = true,
     this.fontSize = 15,
+    this.onTapUserMention,
   });
 
   static final RegExp _codeBlockRegex =
@@ -37,6 +39,7 @@ class DiscordMarkdownView extends StatelessWidget {
         guild: guild,
         ecoMode: ecoMode,
         fontSize: fontSize,
+        onTapUserMention: onTapUserMention,
       );
     }
 
@@ -54,6 +57,7 @@ class DiscordMarkdownView extends StatelessWidget {
               guild: guild,
               ecoMode: ecoMode,
               fontSize: fontSize,
+              onTapUserMention: onTapUserMention,
             ),
           ));
         }
@@ -79,6 +83,7 @@ class DiscordMarkdownView extends StatelessWidget {
             guild: guild,
             ecoMode: ecoMode,
             fontSize: fontSize,
+            onTapUserMention: onTapUserMention,
           ),
         ));
       }
@@ -178,6 +183,7 @@ class _RichParagraph extends StatefulWidget {
   final DiscordGuild? guild;
   final bool ecoMode;
   final double fontSize;
+  final void Function(String userId)? onTapUserMention;
 
   const _RichParagraph({
     required this.text,
@@ -185,6 +191,7 @@ class _RichParagraph extends StatefulWidget {
     this.guild,
     required this.ecoMode,
     required this.fontSize,
+    this.onTapUserMention,
   });
 
   @override
@@ -344,13 +351,19 @@ class _RichParagraphState extends State<_RichParagraph> {
               .replaceAll('<@!', '')
               .replaceAll('<@', '')
               .replaceAll('>', '');
+          final resolvedName =
+              widget.guild?.cachedMembers[uid]?.effectiveName ?? uid;
           spans.add(TextSpan(
-            text: '@$uid',
+            text: '@$resolvedName',
             style: lineStyle.copyWith(
               color: const Color(0xFFC9CDFB),
               backgroundColor: DiscordPalette.blurple.withAlpha(65),
               fontWeight: FontWeight.w600,
             ),
+            recognizer: widget.onTapUserMention != null
+                ? (TapGestureRecognizer()
+                  ..onTap = () => widget.onTapUserMention!(uid))
+                : null,
           ));
         } else if (token.startsWith('<#')) {
           final cid = token.substring(2, token.length - 1);

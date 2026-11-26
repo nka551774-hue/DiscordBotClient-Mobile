@@ -386,6 +386,67 @@ class DiscordRestClient {
     return DiscordChannel.fromJson(res);
   }
 
+  /// Fetches full DiscordUser object (`banner`, `accent_color`, `public_flags`, `avatar`).
+  Future<DiscordUser> getUser(String userId) async {
+    final res =
+        await _request('GET', '/users/${userId.trim()}') as Map<String, dynamic>;
+    return DiscordUser.fromJson(res, profileFetched: true);
+  }
+
+  /// Fetches a specific guild member (`nick`, `roles`, `joined_at`, `avatar`).
+  Future<DiscordMember> getGuildMember(String guildId, String userId) async {
+    final res = await _request(
+      'GET',
+      '/guilds/${guildId.trim()}/members/${userId.trim()}',
+    ) as Map<String, dynamic>;
+    return DiscordMember.fromJson(res);
+  }
+
+  /// Fetches Discord's built-in default Soundboard sounds.
+  Future<List<SoundboardSound>> getDefaultSoundboardSounds() async {
+    final res = await _request('GET', '/soundboard-default-sounds');
+    final list = res is List<dynamic>
+        ? res
+        : (res is Map<String, dynamic>
+            ? (res['items'] as List<dynamic>? ?? const [])
+            : const <dynamic>[]);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((s) => SoundboardSound.fromJson(s))
+        .where((s) => s.available && s.soundId != '0')
+        .toList();
+  }
+
+  /// Fetches custom Soundboard sounds uploaded to [guildId].
+  Future<List<SoundboardSound>> getGuildSoundboardSounds(String guildId) async {
+    final res = await _request('GET', '/guilds/${guildId.trim()}/soundboard-sounds');
+    final list = res is Map<String, dynamic>
+        ? (res['items'] as List<dynamic>? ?? const [])
+        : (res is List<dynamic> ? res : const <dynamic>[]);
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((s) => SoundboardSound.fromJson(s, fallbackGuildId: guildId))
+        .where((s) => s.available && s.soundId != '0')
+        .toList();
+  }
+
+  /// Triggers a Soundboard sound clip in [channelId] (bot must be connected & unmuted).
+  Future<void> sendSoundboardSound(
+    String channelId, {
+    required String soundId,
+    String? sourceGuildId,
+  }) async {
+    await _request(
+      'POST',
+      '/channels/${channelId.trim()}/send-soundboard-sound',
+      body: {
+        'sound_id': soundId,
+        if (sourceGuildId != null && sourceGuildId.isNotEmpty)
+          'source_guild_id': sourceGuildId,
+      },
+    );
+  }
+
   Future<List<DiscordMember>> getGuildMembers(
     String guildId, {
     int limit = 100,
