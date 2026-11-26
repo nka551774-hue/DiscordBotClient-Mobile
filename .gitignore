@@ -1,0 +1,28 @@
+# Flutter / Dart build artifacts
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Platform generated folders (generated cleanly in CI if absent)
+android/
+ios/
+linux/
+macos/
+web/
+windows/
+
+# Local downloaded release binaries
+releases/
+dist/
+*.apk
+*.ipa
+*.aab
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

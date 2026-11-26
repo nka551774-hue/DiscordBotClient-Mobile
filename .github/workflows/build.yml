@@ -1,0 +1,181 @@
+name: Build Android APK & iOS IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ==========================================================
+  # 1. Build Android Release APK (ARM64 + Universal)
+  # ==========================================================
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter Stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Generate Android Scaffolding & Permissions
+        run: |
+          flutter create --platforms=android --org io.botclient.mobile --project-name discord_bot_client .
+          python3 - << 'EOF'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text(encoding="utf-8")
+          if "android.permission.INTERNET" not in text:
+              text = text.replace(
+                  "<application",
+                  '<uses-permission android:name="android.permission.INTERNET"/>\n    <application',
+                  1,
+              )
+          text = text.replace('android:label="discord_bot_client"', 'android:label="DiscordBotClient"')
+          manifest.write_text(text, encoding="utf-8")
+          EOF
+
+      - name: Install Dependencies & Analyze
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build Android Split-ABI APK (Ultra-light ARM64)
+        run: |
+          flutter build apk --release --split-per-abi
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/DiscordBotClient-arm64-v8a.apk
+
+      - name: Build Android Universal APK
+        run: |
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk dist/DiscordBotClient-universal.apk
+
+      - name: Upload Android APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiscordBotClient-Android-APK
+          path: dist/*.apk
+
+  # ==========================================================
+  # 2. Build iOS Release IPA (120Hz ProMotion, Sideload Ready)
+  # ==========================================================
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter Stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Generate iOS Scaffolding & Configure 120Hz ProMotion + Permissions
+        run: |
+          flutter create --platforms=ios --org io.botclient.mobile --project-name discord_bot_client .
+          flutter pub get
+          python3 - << 'EOF'
+          import plistlib
+          from pathlib import Path
+
+          plist_path = Path("ios/Runner/Info.plist")
+          with plist_path.open("rb") as f:
+              pl = plistlib.load(f)
+
+          pl["CFBundleDisplayName"] = "DiscordBotClient"
+          pl["CFBundleName"] = "DiscordBotClient"
+          pl["CADisableMinimumFrameDurationOnPhone"] = True
+          pl["NSPhotoLibraryUsageDescription"] = "允許選擇相簿圖片作為機器人訊息附件上傳至 Discord 頻道。"
+          pl["NSCameraUsageDescription"] = "允許拍攝照片作為機器人訊息附件上傳。"
+
+          with plist_path.open("wb") as f:
+              plistlib.dump(pl, f)
+
+          podfile = Path("ios/Podfile")
+          if podfile.exists():
+              pf_text = podfile.read_text(encoding="utf-8")
+              inject = """
+                target.build_configurations.each do |config|
+                  config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                  config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+                end
+              """
+              if "CODE_SIGNING_ALLOWED" not in pf_text and "flutter_additional_ios_build_settings(target)" in pf_text:
+                  pf_text = pf_text.replace(
+                      "flutter_additional_ios_build_settings(target)",
+                      "flutter_additional_ios_build_settings(target)\n" + inject,
+                  )
+                  podfile.write_text(pf_text, encoding="utf-8")
+          EOF
+
+      - name: Build iOS Release Bundle (No Codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package & Ad-Hoc Sign Sideloadable IPA
+        run: |
+          mkdir -p dist
+          cd build/ios/iphoneos
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R Runner.app Payload/Runner.app
+          codesign --force --deep --sign - Payload/Runner.app || true
+          zip -qry ../../../dist/DiscordBotClient-ios.ipa Payload
+
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiscordBotClient-iOS-IPA
+          path: dist/DiscordBotClient-ios.ipa
+
+  # ==========================================================
+  # 3. Publish Combined GitHub Release (APK + IPA)
+  # ==========================================================
+  publish-release:
+    name: Publish APK & IPA Release
+    needs: [ build-android, build-ios ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android APK Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: DiscordBotClient-Android-APK
+          path: release-assets
+
+      - name: Download iOS IPA Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DiscordBotClient-iOS-IPA
+          path: release-assets
+
+      - name: Create / Update Latest Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "DiscordBotClient Mobile v1.0.0 (Android APK & iOS IPA)"
+          body: |
+            ## DiscordBotClient Mobile v1.0.0
+            參考 `aiko-chan-ai/DiscordBotClient` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### 📦 下載檔案說明
+            - **Android (推薦現代手機)**: `DiscordBotClient-arm64-v8a.apk`（體積最小、純 64 位元原生機器碼）
+            - **Android (通用版 / 模擬器)**: `DiscordBotClient-universal.apk`
+            - **iOS (iPhone / iPad)**: `DiscordBotClient-ios.ipa`（支援 AltStore、SideStore、Sideloadly、TrollStore、Feather、ESign 側載安裝，已啟用 120Hz ProMotion）
+          files: release-assets/*
+          draft: false
+          prerelease: false
