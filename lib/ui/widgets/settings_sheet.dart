@@ -5,6 +5,7 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
+import 'vencord_sheets.dart';
 
 /// Clean, authentic Discord Mobile "You" Profile Modal Sheet —
 /// renders ONLY real account data (real banner/accentColor, real Discord badges
@@ -79,17 +80,28 @@ class _YouProfileModalSheet extends StatelessWidget {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Container(
-                      height: 132,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: bannerColor,
-                        image: bannerUrl != null
-                            ? DecorationImage(
-                                image: NetworkImage(bannerUrl),
-                                fit: BoxFit.cover,
+                    GestureDetector(
+                      onTap: (controller.vencord.isPluginEnabled('ViewIcons') &&
+                              bannerUrl != null)
+                          ? () => showVencordImageViewerModal(
+                                context,
+                                palette: p,
+                                title: '${acc.displayName} 橫幅',
+                                imageUrl: bannerUrl,
                               )
-                            : null,
+                          : null,
+                      child: Container(
+                        height: 132,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: bannerColor,
+                          image: bannerUrl != null
+                              ? DecorationImage(
+                                  image: NetworkImage(bannerUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
                       ),
                     ),
 
@@ -138,6 +150,15 @@ class _YouProfileModalSheet extends StatelessWidget {
                       child: GestureDetector(
                         onTap: () =>
                             showDiscordStatusSheet(context, controller),
+                        onLongPress: controller.vencord
+                                .isPluginEnabled('ViewIcons')
+                            ? () => showVencordImageViewerModal(
+                                  context,
+                                  palette: p,
+                                  title: '${acc.displayName} 頭像',
+                                  imageUrl: acc.avatarUrl(size: 1024),
+                                )
+                            : null,
                         child: Stack(
                           children: [
                             Container(
@@ -575,6 +596,77 @@ class DiscordSettingsScreen extends StatelessWidget {
                     eco.copyWith(ecoPowerSaving: v),
                     reconnectGateway: true,
                   ),
+                ),
+              ]),
+              const SizedBox(height: 20),
+              _groupLabel(p, 'Vencord'),
+              _settingsGroup(p, [
+                ListTile(
+                  leading:
+                      Icon(Icons.extension_rounded, color: p.brandColor),
+                  title: Text('Vencord 插件 (Plugins)',
+                      style: TextStyle(color: p.textPrimary, fontSize: 15)),
+                  subtitle: Text(
+                    '已啟用 ${controller.vencord.allPlugins.where((pl) => controller.vencord.isPluginEnabled(pl.name)).length} / ${controller.vencord.allPlugins.length} 個內建與自訂外掛',
+                    style: TextStyle(color: p.textMuted, fontSize: 12.5),
+                  ),
+                  trailing:
+                      Icon(Icons.chevron_right, color: p.textMuted, size: 20),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => VencordSettingsScreen(
+                          controller: controller,
+                          initialTabIndex: 0,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: p.border),
+                ListTile(
+                  leading: Icon(Icons.palette_outlined, color: p.textSecondary),
+                  title: Text('Vencord 主題與 QuickCSS',
+                      style: TextStyle(color: p.textPrimary, fontSize: 15)),
+                  subtitle: Text(
+                    'Online Themes 連結與 CSS 變數即時套用',
+                    style: TextStyle(color: p.textMuted, fontSize: 12.5),
+                  ),
+                  trailing:
+                      Icon(Icons.chevron_right, color: p.textMuted, size: 20),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => VencordSettingsScreen(
+                          controller: controller,
+                          initialTabIndex: 1,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                Divider(height: 1, color: p.border),
+                ListTile(
+                  leading:
+                      Icon(Icons.sync_alt_rounded, color: p.textSecondary),
+                  title: Text('Vencord 設定備份與同步',
+                      style: TextStyle(color: p.textPrimary, fontSize: 15)),
+                  subtitle: Text(
+                    '相容電腦版 vencord-settings-backup.json 匯出與匯入',
+                    style: TextStyle(color: p.textMuted, fontSize: 12.5),
+                  ),
+                  trailing:
+                      Icon(Icons.chevron_right, color: p.textMuted, size: 20),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => VencordSettingsScreen(
+                          controller: controller,
+                          initialTabIndex: 2,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ]),
               const SizedBox(height: 20),

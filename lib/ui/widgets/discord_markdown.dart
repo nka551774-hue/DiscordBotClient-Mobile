@@ -12,6 +12,10 @@ class DiscordMarkdownView extends StatelessWidget {
   final DiscordGuild? guild;
   final bool ecoMode;
   final double fontSize;
+  final bool revealAllSpoilers;
+  final bool alwaysAnimate;
+  final bool roleColorMentions;
+  final Color? overrideTextColor;
   final void Function(String userId)? onTapUserMention;
 
   const DiscordMarkdownView({
@@ -21,6 +25,10 @@ class DiscordMarkdownView extends StatelessWidget {
     this.guild,
     this.ecoMode = true,
     this.fontSize = 15,
+    this.revealAllSpoilers = false,
+    this.alwaysAnimate = false,
+    this.roleColorMentions = false,
+    this.overrideTextColor,
     this.onTapUserMention,
   });
 
@@ -39,6 +47,10 @@ class DiscordMarkdownView extends StatelessWidget {
         guild: guild,
         ecoMode: ecoMode,
         fontSize: fontSize,
+        revealAllSpoilers: revealAllSpoilers,
+        alwaysAnimate: alwaysAnimate,
+        roleColorMentions: roleColorMentions,
+        overrideTextColor: overrideTextColor,
         onTapUserMention: onTapUserMention,
       );
     }
@@ -57,6 +69,10 @@ class DiscordMarkdownView extends StatelessWidget {
               guild: guild,
               ecoMode: ecoMode,
               fontSize: fontSize,
+              revealAllSpoilers: revealAllSpoilers,
+              alwaysAnimate: alwaysAnimate,
+              roleColorMentions: roleColorMentions,
+              overrideTextColor: overrideTextColor,
               onTapUserMention: onTapUserMention,
             ),
           ));
@@ -83,6 +99,10 @@ class DiscordMarkdownView extends StatelessWidget {
             guild: guild,
             ecoMode: ecoMode,
             fontSize: fontSize,
+            revealAllSpoilers: revealAllSpoilers,
+            alwaysAnimate: alwaysAnimate,
+            roleColorMentions: roleColorMentions,
+            overrideTextColor: overrideTextColor,
             onTapUserMention: onTapUserMention,
           ),
         ));
@@ -183,6 +203,10 @@ class _RichParagraph extends StatefulWidget {
   final DiscordGuild? guild;
   final bool ecoMode;
   final double fontSize;
+  final bool revealAllSpoilers;
+  final bool alwaysAnimate;
+  final bool roleColorMentions;
+  final Color? overrideTextColor;
   final void Function(String userId)? onTapUserMention;
 
   const _RichParagraph({
@@ -191,6 +215,10 @@ class _RichParagraph extends StatefulWidget {
     this.guild,
     required this.ecoMode,
     required this.fontSize,
+    this.revealAllSpoilers = false,
+    this.alwaysAnimate = false,
+    this.roleColorMentions = false,
+    this.overrideTextColor,
     this.onTapUserMention,
   });
 
@@ -208,7 +236,7 @@ class _RichParagraphState extends State<_RichParagraph> {
   @override
   Widget build(BuildContext context) {
     final baseStyle = TextStyle(
-      color: widget.palette.textPrimary,
+      color: widget.overrideTextColor ?? widget.palette.textPrimary,
       fontSize: widget.fontSize,
       height: 1.36,
     );
@@ -263,7 +291,8 @@ class _RichParagraphState extends State<_RichParagraph> {
         final token = match.group(0)!;
         if (token.startsWith('||') && token.endsWith('||')) {
           final currentSpoilerIdx = spoilerCounter++;
-          final revealed = _revealedSpoilers.contains(currentSpoilerIdx);
+          final revealed = widget.revealAllSpoilers ||
+              _revealedSpoilers.contains(currentSpoilerIdx);
           final inner = token.substring(2, token.length - 2);
           spans.add(TextSpan(
             text: revealed ? inner : ' 劇透內容 ',
@@ -316,7 +345,9 @@ class _RichParagraphState extends State<_RichParagraph> {
           final parts = token.substring(1, token.length - 1).split(':');
           if (parts.length >= 3) {
             final emojiId = parts[2];
-            final ext = (animated && !widget.ecoMode) ? 'gif' : 'webp';
+            final ext = (animated && (!widget.ecoMode || widget.alwaysAnimate))
+                ? 'gif'
+                : 'webp';
             spans.add(WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
@@ -351,13 +382,21 @@ class _RichParagraphState extends State<_RichParagraph> {
               .replaceAll('<@!', '')
               .replaceAll('<@', '')
               .replaceAll('>', '');
-          final resolvedName =
-              widget.guild?.cachedMembers[uid]?.effectiveName ?? uid;
+          final member = widget.guild?.cachedMembers[uid];
+          final resolvedName = member?.effectiveName ?? uid;
+          final rc = (widget.roleColorMentions && widget.guild != null)
+              ? member?.resolveColor(widget.guild!.roles)
+              : null;
+          final mentionColor =
+              rc != null ? Color(0xFF000000 | rc) : const Color(0xFFC9CDFB);
+          final mentionBg = rc != null
+              ? Color(0xFF000000 | rc).withAlpha(42)
+              : DiscordPalette.blurple.withAlpha(65);
           spans.add(TextSpan(
             text: '@$resolvedName',
             style: lineStyle.copyWith(
-              color: const Color(0xFFC9CDFB),
-              backgroundColor: DiscordPalette.blurple.withAlpha(65),
+              color: mentionColor,
+              backgroundColor: mentionBg,
               fontWeight: FontWeight.w600,
             ),
             recognizer: widget.onTapUserMention != null

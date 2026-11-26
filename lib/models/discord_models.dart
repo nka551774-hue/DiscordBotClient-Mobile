@@ -618,7 +618,35 @@ class DiscordPermissions {
   static final BigInt readMessageHistory = BigInt.one << 16;
   static final BigInt manageWebhooks = BigInt.one << 29;
   static final BigInt sendMessagesInThreads = BigInt.one << 38;
+  static final BigInt useSoundboard = BigInt.one << 42;
   static final BigInt all = (BigInt.one << 53) - BigInt.one;
+
+  static final List<(String name, BigInt bit)> namedFlags = [
+    ('Administrator (管理員)', BigInt.one << 3),
+    ('Manage Guild (管理伺服器)', BigInt.one << 5),
+    ('Manage Roles (管理身分組)', BigInt.one << 28),
+    ('Manage Channels (管理頻道)', BigInt.one << 4),
+    ('Kick Members (踢出成員)', BigInt.one << 1),
+    ('Ban Members (封鎖成員)', BigInt.one << 2),
+    ('Moderate Members (禁言成員)', BigInt.one << 40),
+    ('View Audit Log (檢視審計日誌)', BigInt.one << 7),
+    ('View Channel (檢視頻道)', BigInt.one << 10),
+    ('Send Messages (傳送訊息)', BigInt.one << 11),
+    ('Send Messages in Threads (於討論串傳訊)', BigInt.one << 38),
+    ('Manage Messages (管理訊息)', BigInt.one << 13),
+    ('Embed Links (嵌入連結)', BigInt.one << 14),
+    ('Attach Files (附加檔案)', BigInt.one << 15),
+    ('Read Message History (讀取歷史訊息)', BigInt.one << 16),
+    ('Mention Everyone (提及所有人)', BigInt.one << 17),
+    ('Use External Emojis (使用外部表情)', BigInt.one << 18),
+    ('Add Reactions (新增反應)', BigInt.one << 6),
+    ('Connect Voice (連線語音)', BigInt.one << 20),
+    ('Speak (語音發話)', BigInt.one << 21),
+    ('Use Soundboard (使用音效板)', BigInt.one << 42),
+    ('Use External Sounds (跨服音效板)', BigInt.one << 45),
+    ('Manage Webhooks (管理 Webhook)', BigInt.one << 29),
+    ('Manage Expressions (管理表情與音效)', BigInt.one << 30),
+  ];
 
   static BigInt computeChannelPermissions({
     required DiscordGuild guild,
@@ -1391,6 +1419,16 @@ class DiscordComponentButton {
   }
 }
 
+class MessageEditLogEntry {
+  final DateTime timestamp;
+  final String content;
+
+  const MessageEditLogEntry({
+    required this.timestamp,
+    required this.content,
+  });
+}
+
 class DiscordMessage {
   final String id;
   final String channelId;
@@ -1403,6 +1441,7 @@ class DiscordMessage {
   final DateTime? editedTimestamp;
   final bool pinned;
   final int type;
+  final int flags;
   final List<DiscordAttachment> attachments;
   final List<DiscordEmbed> embeds;
   final List<DiscordReaction> reactions;
@@ -1410,6 +1449,11 @@ class DiscordMessage {
   final String? referencedMessageId;
   final List<DiscordComponentButton> components;
   final List<String> stickerNames;
+  // Vencord MessageLogger & Translate & ViewRaw metadata
+  final bool isDeleted;
+  final List<MessageEditLogEntry> editHistory;
+  final String? translatedText;
+  final Map<String, dynamic>? rawJson;
 
   const DiscordMessage({
     required this.id,
@@ -1423,6 +1467,7 @@ class DiscordMessage {
     this.editedTimestamp,
     this.pinned = false,
     this.type = 0,
+    this.flags = 0,
     this.attachments = const [],
     this.embeds = const [],
     this.reactions = const [],
@@ -1430,7 +1475,14 @@ class DiscordMessage {
     this.referencedMessageId,
     this.components = const [],
     this.stickerNames = const [],
+    this.isDeleted = false,
+    this.editHistory = const [],
+    this.translatedText,
+    this.rawJson,
   });
+
+  bool get isComponentsV2 => (flags & (1 << 15)) != 0;
+  bool get isSilentMessage => (flags & (1 << 12)) != 0;
 
   String authorDisplayName(DiscordGuild? guild) {
     if (memberNick != null && memberNick!.isNotEmpty) return memberNick!;
@@ -1460,9 +1512,15 @@ class DiscordMessage {
     String? content,
     DateTime? editedTimestamp,
     bool? pinned,
+    int? flags,
     List<DiscordAttachment>? attachments,
     List<DiscordEmbed>? embeds,
     List<DiscordReaction>? reactions,
+    bool? isDeleted,
+    List<MessageEditLogEntry>? editHistory,
+    String? translatedText,
+    bool clearTranslatedText = false,
+    Map<String, dynamic>? rawJson,
   }) {
     return DiscordMessage(
       id: id,
@@ -1476,6 +1534,7 @@ class DiscordMessage {
       editedTimestamp: editedTimestamp ?? this.editedTimestamp,
       pinned: pinned ?? this.pinned,
       type: type,
+      flags: flags ?? this.flags,
       attachments: attachments ?? this.attachments,
       embeds: embeds ?? this.embeds,
       reactions: reactions ?? this.reactions,
@@ -1483,6 +1542,11 @@ class DiscordMessage {
       referencedMessageId: referencedMessageId,
       components: components,
       stickerNames: stickerNames,
+      isDeleted: isDeleted ?? this.isDeleted,
+      editHistory: editHistory ?? this.editHistory,
+      translatedText:
+          clearTranslatedText ? null : (translatedText ?? this.translatedText),
+      rawJson: rawJson ?? this.rawJson,
     );
   }
 
@@ -1553,6 +1617,7 @@ class DiscordMessage {
           : null,
       pinned: json['pinned'] as bool? ?? false,
       type: json['type'] as int? ?? 0,
+      flags: json['flags'] as int? ?? 0,
       attachments: attRaw
           .whereType<Map<String, dynamic>>()
           .map(DiscordAttachment.fromJson)
@@ -1573,6 +1638,7 @@ class DiscordMessage {
           .whereType<Map<String, dynamic>>()
           .map((s) => s['name']?.toString() ?? 'Sticker')
           .toList(),
+      rawJson: json,
     );
   }
 }

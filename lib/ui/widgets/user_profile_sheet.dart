@@ -6,6 +6,7 @@ import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
 import 'settings_sheet.dart';
+import 'vencord_sheets.dart';
 
 /// Opens the authentic 2025/2026 Discord Mobile User Profile Modal Sheet
 /// for any user or bot (in Guild channels, Direct Messages, Member List, or Voice Rooms).
@@ -179,6 +180,58 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                     );
                   },
                 ),
+                if (guild != null &&
+                    widget.controller.vencord
+                        .isPluginEnabled('PermissionsViewer')) ...[
+                  Divider(height: 1, color: p.border),
+                  ListTile(
+                    leading: Icon(Icons.admin_panel_settings_outlined,
+                        color: p.textPrimary),
+                    title: Text('檢視成員權限 (Permissions)',
+                        style: TextStyle(color: p.textPrimary)),
+                    onTap: () {
+                      Navigator.of(menuCtx).pop();
+                      final refCh = (widget.controller.selectedChannel != null &&
+                              !widget.controller.selectedChannel!.isDm)
+                          ? widget.controller.selectedChannel!
+                          : (guild.channels.isNotEmpty
+                              ? guild.channels.first
+                              : const DiscordChannel(
+                                  id: '0', name: 'general', type: 0));
+                      final memberPerms = DiscordPermissions.computeChannelPermissions(
+                        guild: guild,
+                        channel: refCh,
+                        botUserId: _user.id,
+                        botRoleIds: _member?.roleIds ?? const [],
+                      );
+                      showVencordPermissionsModal(
+                        context,
+                        palette: p,
+                        title: _member?.effectiveName ?? _user.displayName,
+                        permissions: memberPerms,
+                      );
+                    },
+                  ),
+                ],
+                if (widget.controller.vencord.isPluginEnabled('ViewRaw')) ...[
+                  Divider(height: 1, color: p.border),
+                  ListTile(
+                    leading: Icon(Icons.code_rounded, color: p.textPrimary),
+                    title: Text('檢視原始資料 (View Raw)',
+                        style: TextStyle(color: p.textPrimary)),
+                    onTap: () {
+                      Navigator.of(menuCtx).pop();
+                      showVencordRawModal(
+                        context,
+                        palette: p,
+                        title: 'User',
+                        data: _user.toJson(),
+                        sortKeys: widget.controller.vencord
+                            .getSetting<bool>('ViewRaw', 'sortKeys', true),
+                      );
+                    },
+                  ),
+                ],
                 if (guild != null && canKick) ...[
                   Divider(height: 1, color: p.border),
                   ListTile(
@@ -272,10 +325,12 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
         !isGuildOwner &&
         DiscordPermissions.has(perms, DiscordPermissions.banMembers);
 
+    final allowAnim = !eco || ctrl.vencord.isPluginEnabled('AlwaysAnimate');
+    final viewIcons = ctrl.vencord.isPluginEnabled('ViewIcons');
     final bannerUrl = isSelf
         ? (acc.bannerUrl(size: 600) ??
-            _user.bannerUrl(size: 600, allowAnimated: !eco))
-        : _user.bannerUrl(size: 600, allowAnimated: !eco);
+            _user.bannerUrl(size: 600, allowAnimated: allowAnim))
+        : _user.bannerUrl(size: 600, allowAnimated: allowAnim);
     final accentInt = isSelf
         ? (acc.accentColor ?? _user.accentColor)
         : _user.accentColor;
@@ -339,17 +394,27 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Container(
-                      height: 124,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: bannerColor,
-                        image: bannerUrl != null
-                            ? DecorationImage(
-                                image: NetworkImage(bannerUrl),
-                                fit: BoxFit.cover,
+                    GestureDetector(
+                      onTap: (viewIcons && bannerUrl != null)
+                          ? () => showVencordImageViewerModal(
+                                context,
+                                palette: p,
+                                title: '$effectiveDisplayName 橫幅',
+                                imageUrl: bannerUrl,
                               )
-                            : null,
+                          : null,
+                      child: Container(
+                        height: 124,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: bannerColor,
+                          image: bannerUrl != null
+                              ? DecorationImage(
+                                  image: NetworkImage(bannerUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
                       ),
                     ),
                     // Top-left Close Button
@@ -380,31 +445,41 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                     Positioned(
                       left: 16,
                       bottom: 0,
-                      child: Stack(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: BoxDecoration(
-                              color: sheetBg,
-                              shape: BoxShape.circle,
-                            ),
-                            child: CircleAvatar(
-                              radius: 42,
-                              backgroundImage: NetworkImage(avatarUrl),
-                            ),
-                          ),
-                          if (isSelf)
-                            Positioned(
-                              right: 3,
-                              bottom: 3,
-                              child: DiscordStatusBadge(
-                                status: ctrl.botStatus,
-                                size: 25,
-                                borderColor: sheetBg,
-                                borderWidth: 4.5,
+                      child: GestureDetector(
+                        onTap: viewIcons
+                            ? () => showVencordImageViewerModal(
+                                  context,
+                                  palette: p,
+                                  title: '$effectiveDisplayName 頭像',
+                                  imageUrl: avatarUrl,
+                                )
+                            : null,
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: sheetBg,
+                                shape: BoxShape.circle,
+                              ),
+                              child: CircleAvatar(
+                                radius: 42,
+                                backgroundImage: NetworkImage(avatarUrl),
                               ),
                             ),
-                        ],
+                            if (isSelf)
+                              Positioned(
+                                right: 3,
+                                bottom: 3,
+                                child: DiscordStatusBadge(
+                                  status: ctrl.botStatus,
+                                  size: 25,
+                                  borderColor: sheetBg,
+                                  borderWidth: 4.5,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ],

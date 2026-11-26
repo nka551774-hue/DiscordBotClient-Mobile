@@ -3,11 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/discord_models.dart';
+import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
 import 'discord_markdown.dart';
+import 'vencord_sheets.dart';
 
 class MessageTile extends StatefulWidget {
+  final BotClientController controller;
   final DiscordMessage message;
   final bool compact;
   final bool showDateDivider;
@@ -27,9 +30,11 @@ class MessageTile extends StatefulWidget {
   final void Function(DiscordUser user, {DiscordMember? member})
       onOpenUserProfile;
   final void Function(String userId)? onTapUserMention;
+  final VoidCallback? onNavigateToDm;
 
   const MessageTile({
     super.key,
+    required this.controller,
     required this.message,
     required this.compact,
     this.showDateDivider = false,
@@ -47,6 +52,7 @@ class MessageTile extends StatefulWidget {
     required this.onOpenDm,
     required this.onOpenUserProfile,
     this.onTapUserMention,
+    this.onNavigateToDm,
   });
 
   @override
@@ -82,116 +88,35 @@ class _MessageTileState extends State<MessageTile> {
   }
 
   void _showCustomEmojiPicker(BuildContext context) {
-    final p = widget.palette;
-    final guildEmojis = widget.guild?.emojis ?? const <DiscordEmoji>[];
-    const commonUnicode = [
-      '😀', '😂', '🥹', '😍', '🤔', '😎', '😭', '😡', '👍', '👎',
-      '❤️', '🔥', '🎉', '✨', '💯', '👀', '🙏', '✅', '❌', '🚀',
-    ];
-
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '新增表情反應',
-                  style: TextStyle(
-                    color: p.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: commonUnicode.map((em) {
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        final existing = widget.message.reactions.where(
-                          (r) => r.emoji.name == em && r.emoji.id == null,
-                        );
-                        widget.onToggleReaction(
-                          widget.message,
-                          DiscordEmoji(name: em),
-                          existing.isNotEmpty && existing.first.me,
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Text(em, style: const TextStyle(fontSize: 24)),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                if (guildEmojis.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    '伺服器自訂表情',
-                    style: TextStyle(
-                      color: p.textSecondary,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: guildEmojis.take(40).map((ge) {
-                      final url = ge.imageUrl(
-                        size: 48,
-                        allowAnimated: !widget.ecoMode,
-                      );
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: () {
-                          Navigator.of(ctx).pop();
-                          final existing = widget.message.reactions.where(
-                            (r) => r.emoji.id == ge.id,
-                          );
-                          widget.onToggleReaction(
-                            widget.message,
-                            ge,
-                            existing.isNotEmpty && existing.first.me,
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: url != null
-                              ? Image.network(
-                                  url,
-                                  width: 28,
-                                  height: 28,
-                                  cacheWidth: 56,
-                                )
-                              : Text(':${ge.name}:'),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+    showDiscordEmojiPickerSheet(
+      context,
+      controller: widget.controller,
+      palette: widget.palette,
+      guild: widget.guild,
+      onSelectEmoji: (em) {
+        final existing = widget.message.reactions.where(
+          (r) => r.emoji.apiIdentifier == em.apiIdentifier,
+        );
+        widget.onToggleReaction(
+          widget.message,
+          em,
+          existing.isNotEmpty && existing.first.me,
+        );
+      },
     );
   }
 
   void _showDiscordMessageSheet(BuildContext context) {
+    final vc = widget.controller.vencord;
     final message = widget.message;
     final palette = widget.palette;
     final isOwn = message.author.id == widget.currentBotUserId;
     final canDm = !isOwn && !message.author.bot;
+    final showEditBtn =
+        vc.getSetting<bool>('BotClient', 'embedEditMessageButton', true);
+    final isAdvancedEditor = vc.getSetting<String>(
+            'BotClient', 'messageEditor', 'advanced') ==
+        'advanced';
     const quickEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
     showModalBottomSheet<void>(
@@ -214,7 +139,7 @@ class _MessageTileState extends State<MessageTile> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Circular Quick Reactions Row + Custom Emoji Picker Button
+                  // Circular Quick Reactions Row + Unified Application/Guild Emoji Picker Button
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -290,7 +215,7 @@ class _MessageTileState extends State<MessageTile> {
                           label: '檢視個人資料',
                           onTap: _openAuthorProfile,
                         ),
-                        if (isOwn) ...[
+                        if (isOwn && !message.isDeleted) ...[
                           Divider(height: 1, color: palette.border),
                           _sheetTile(
                             ctx,
@@ -299,7 +224,12 @@ class _MessageTileState extends State<MessageTile> {
                             onTap: () => widget.onEdit(message),
                           ),
                         ],
-                        if (isOwn && message.embeds.isNotEmpty) ...[
+                        if (isOwn &&
+                            !message.isDeleted &&
+                            showEditBtn &&
+                            (isAdvancedEditor ||
+                                message.embeds.isNotEmpty ||
+                                message.isComponentsV2)) ...[
                           Divider(height: 1, color: palette.border),
                           ListTile(
                             dense: true,
@@ -308,7 +238,9 @@ class _MessageTileState extends State<MessageTile> {
                               color: palette.textPrimary,
                             ),
                             title: Text(
-                              '編輯 Embed',
+                              isAdvancedEditor
+                                  ? '進階訊息 / Embed 編輯器'
+                                  : '編輯 Embed',
                               style: TextStyle(
                                 color: palette.textPrimary,
                                 fontSize: 14.5,
@@ -321,7 +253,31 @@ class _MessageTileState extends State<MessageTile> {
                             },
                           ),
                         ],
-                        if (widget.canManageMessages) ...[
+                        if (vc.isPluginEnabled('Translate') &&
+                            (message.content.isNotEmpty ||
+                                message.embeds.isNotEmpty)) ...[
+                          Divider(height: 1, color: palette.border),
+                          _sheetTile(
+                            ctx,
+                            icon: Icons.translate_rounded,
+                            label: message.translatedText != null
+                                ? '隱藏翻譯結果'
+                                : '翻譯訊息 (Translate)',
+                            onTap: () async {
+                              try {
+                                await widget.controller
+                                    .translateMessageInline(message);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('翻譯失敗：$e')),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ],
+                        if (widget.canManageMessages && !message.isDeleted) ...[
                           Divider(height: 1, color: palette.border),
                           _sheetTile(
                             ctx,
@@ -351,6 +307,42 @@ class _MessageTileState extends State<MessageTile> {
                             },
                           ),
                         ],
+                        if (vc.isPluginEnabled('ViewRaw')) ...[
+                          Divider(height: 1, color: palette.border),
+                          _sheetTile(
+                            ctx,
+                            icon: Icons.code_rounded,
+                            label: '檢視原始資料 (View Raw)',
+                            onTap: () {
+                              showVencordRawModal(
+                                context,
+                                palette: palette,
+                                title: 'Message',
+                                data: message.rawJson ??
+                                    {
+                                      'id': message.id,
+                                      'channel_id': message.channelId,
+                                      'content': message.content,
+                                    },
+                                rawContent: message.content,
+                                sortKeys: vc.getSetting<bool>(
+                                    'ViewRaw', 'sortKeys', true),
+                              );
+                            },
+                          ),
+                        ],
+                        if (vc.isPluginEnabled('MessageLogger') &&
+                            (message.isDeleted ||
+                                message.editHistory.isNotEmpty)) ...[
+                          Divider(height: 1, color: palette.border),
+                          _sheetTile(
+                            ctx,
+                            icon: Icons.history_toggle_off_rounded,
+                            label: '清除訊息紀錄 (MessageLogger)',
+                            onTap: () => widget.controller
+                                .clearLoggedMessageHistory(message),
+                          ),
+                        ],
                         Divider(height: 1, color: palette.border),
                         _sheetTile(
                           ctx,
@@ -360,7 +352,8 @@ class _MessageTileState extends State<MessageTile> {
                             Clipboard.setData(ClipboardData(text: message.id));
                           },
                         ),
-                        if (isOwn || widget.canManageMessages) ...[
+                        if ((isOwn || widget.canManageMessages) &&
+                            !message.isDeleted) ...[
                           Divider(height: 1, color: palette.border),
                           _sheetTile(
                             ctx,
@@ -410,6 +403,7 @@ class _MessageTileState extends State<MessageTile> {
 
   @override
   Widget build(BuildContext context) {
+    final vc = widget.controller.vencord;
     final message = widget.message;
     final palette = widget.palette;
     final compact = widget.compact && !widget.showDateDivider;
@@ -419,6 +413,32 @@ class _MessageTileState extends State<MessageTile> {
     final authorColor = roleColorInt != null
         ? Color(0xFF000000 | roleColorInt)
         : palette.textPrimary;
+
+    final revealSpoilers = vc.isPluginEnabled('RevealAllSpoilers');
+    final alwaysAnim = vc.isPluginEnabled('AlwaysAnimate');
+    final roleColorMentions = vc.isPluginEnabled('RoleColorEverywhere') &&
+        vc.getSetting<bool>('RoleColorEverywhere', 'chatMentions', true);
+    final logEnabled = vc.isPluginEnabled('MessageLogger');
+    final showInlineEdits = message.editHistory.isNotEmpty &&
+        logEnabled &&
+        vc.getSetting<bool>('MessageLogger', 'inlineEdits', true);
+    final deleteOverlay = message.isDeleted &&
+        logEnabled &&
+        vc.getSetting<String>('MessageLogger', 'deleteStyle', 'text') ==
+            'overlay';
+
+    String? latencyBadge;
+    if (vc.isPluginEnabled('MessageLatency')) {
+      final deltaMs = message.timestamp
+          .difference(snowflakeCreatedAt(message.id))
+          .inMilliseconds
+          .abs();
+      final thresholdSec =
+          vc.getSetting<int>('MessageLatency', 'latencyThresholdSec', 2);
+      if (deltaMs >= thresholdSec * 1000) {
+        latencyBadge = '${(deltaMs / 1000).toStringAsFixed(1)}s';
+      }
+    }
 
     final replyProgress = (-_dragOffset / 48.0).clamp(0.0, 1.0);
 
@@ -695,6 +715,29 @@ class _MessageTileState extends State<MessageTile> {
                                               fontSize: 11.5,
                                             ),
                                           ),
+                                          if (latencyBadge != null)
+                                            Text(
+                                              '($latencyBadge)',
+                                              style: TextStyle(
+                                                color: palette.textMuted,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          if (message.isSilentMessage)
+                                            Icon(
+                                              Icons.notifications_off_outlined,
+                                              size: 12,
+                                              color: palette.textMuted,
+                                            ),
+                                          if (message.isDeleted)
+                                            const Text(
+                                              '(已刪除)',
+                                              style: TextStyle(
+                                                color: DiscordPalette.danger,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
                                           if (message.pinned)
                                             const Icon(
                                               Icons.push_pin_rounded,
@@ -705,15 +748,113 @@ class _MessageTileState extends State<MessageTile> {
                                       ),
                                     ),
 
+                                  if (showInlineEdits)
+                                    ...message.editHistory.map((edit) {
+                                      final eh = edit.timestamp.hour
+                                          .toString()
+                                          .padLeft(2, '0');
+                                      final em = edit.timestamp.minute
+                                          .toString()
+                                          .padLeft(2, '0');
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 3),
+                                        child: Opacity(
+                                          opacity: 0.56,
+                                          child: Text(
+                                            '${edit.content}  (編輯前 $eh:$em)',
+                                            style: TextStyle(
+                                              color: palette.textSecondary,
+                                              fontSize: 13.5,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+
                                   if (message.content.isNotEmpty)
-                                    DiscordMarkdownView(
-                                      text: message.editedTimestamp != null
-                                          ? '${message.content} *(已編輯)*'
-                                          : message.content,
-                                      palette: palette,
-                                      guild: widget.guild,
-                                      ecoMode: widget.ecoMode,
-                                      onTapUserMention: widget.onTapUserMention,
+                                    Container(
+                                      padding: deleteOverlay
+                                          ? const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4)
+                                          : EdgeInsets.zero,
+                                      decoration: deleteOverlay
+                                          ? BoxDecoration(
+                                              color: DiscordPalette.danger
+                                                  .withAlpha(36),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: DiscordPalette.danger
+                                                    .withAlpha(90),
+                                                width: 0.8,
+                                              ),
+                                            )
+                                          : null,
+                                      child: DiscordMarkdownView(
+                                        text: message.isDeleted
+                                            ? '${message.content} *(已刪除)*'
+                                            : (message.editedTimestamp != null
+                                                ? '${message.content} *(已編輯)*'
+                                                : message.content),
+                                        palette: palette,
+                                        guild: widget.guild,
+                                        ecoMode: widget.ecoMode,
+                                        revealAllSpoilers: revealSpoilers,
+                                        alwaysAnimate: alwaysAnim,
+                                        roleColorMentions: roleColorMentions,
+                                        overrideTextColor:
+                                            (message.isDeleted && !deleteOverlay)
+                                                ? DiscordPalette.danger
+                                                : null,
+                                        onTapUserMention:
+                                            widget.onTapUserMention,
+                                      ),
+                                    ),
+
+                                  if (message.translatedText != null &&
+                                      message.translatedText!.isNotEmpty)
+                                    Container(
+                                      margin: const EdgeInsets.only(top: 6),
+                                      padding: const EdgeInsets.fromLTRB(
+                                          10, 7, 8, 7),
+                                      decoration: BoxDecoration(
+                                        color: palette.cardBg,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border(
+                                          left: BorderSide(
+                                              color: palette.brandColor,
+                                              width: 3),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(Icons.translate_rounded,
+                                              size: 14,
+                                              color: palette.brandColor),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: SelectableText(
+                                              message.translatedText!,
+                                              style: TextStyle(
+                                                color: palette.textPrimary,
+                                                fontSize: 13.5,
+                                                height: 1.35,
+                                              ),
+                                            ),
+                                          ),
+                                          GestureDetector(
+                                            onTap: () => widget.controller
+                                                .translateMessageInline(
+                                                    message),
+                                            child: Icon(Icons.close_rounded,
+                                                size: 15,
+                                                color: palette.textMuted),
+                                          ),
+                                        ],
+                                      ),
                                     ),
 
                                   if (message.attachments.isNotEmpty)
@@ -803,7 +944,8 @@ class _MessageTileState extends State<MessageTile> {
                                             message.reactions.map((rxn) {
                                           final customUrl = rxn.emoji.imageUrl(
                                             size: 32,
-                                            allowAnimated: !widget.ecoMode,
+                                            allowAnimated:
+                                                !widget.ecoMode || alwaysAnim,
                                           );
                                           return InkWell(
                                             borderRadius:
@@ -813,6 +955,23 @@ class _MessageTileState extends State<MessageTile> {
                                                     message,
                                                     rxn.emoji,
                                                     rxn.me),
+                                            onLongPress: vc.isPluginEnabled(
+                                                    'WhoReacted')
+                                                ? () {
+                                                    HapticFeedback
+                                                        .selectionClick();
+                                                    showWhoReactedSheet(
+                                                      context,
+                                                      controller:
+                                                          widget.controller,
+                                                      palette: palette,
+                                                      message: message,
+                                                      emoji: rxn.emoji,
+                                                      onNavigateToDm:
+                                                          widget.onNavigateToDm,
+                                                    );
+                                                  }
+                                                : null,
                                             child: Container(
                                               padding:
                                                   const EdgeInsets.symmetric(

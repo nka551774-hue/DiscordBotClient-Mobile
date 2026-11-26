@@ -235,12 +235,17 @@ class DiscordRestClient {
     String channelId, {
     String content = '',
     String? replyToMessageId,
+    bool replyMention = true,
+    int? flags,
     List<DiscordEmbed>? embeds,
+    Map<String, dynamic>? rawPayloadOverride,
     Uint8List? fileBytes,
     String? fileName,
   }) async {
-    final payload = <String, dynamic>{};
-    if (content.isNotEmpty) {
+    final payload = rawPayloadOverride != null
+        ? Map<String, dynamic>.from(rawPayloadOverride)
+        : <String, dynamic>{};
+    if (rawPayloadOverride == null && content.isNotEmpty) {
       payload['content'] = content;
     }
     if (replyToMessageId != null && replyToMessageId.isNotEmpty) {
@@ -248,8 +253,17 @@ class DiscordRestClient {
         'message_id': replyToMessageId,
         'fail_if_not_exists': false,
       };
+      if (!replyMention) {
+        payload['allowed_mentions'] = {
+          'parse': ['users', 'roles', 'everyone'],
+          'replied_user': false,
+        };
+      }
     }
-    if (embeds != null && embeds.isNotEmpty) {
+    if (flags != null && flags != 0) {
+      payload['flags'] = (payload['flags'] as int? ?? 0) | flags;
+    }
+    if (rawPayloadOverride == null && embeds != null && embeds.isNotEmpty) {
       payload['embeds'] = embeds.map((e) => e.toJson()).toList();
     }
 
@@ -294,11 +308,16 @@ class DiscordRestClient {
     String messageId, {
     String? content,
     List<DiscordEmbed>? embeds,
+    Map<String, dynamic>? rawPayloadOverride,
   }) async {
-    final body = <String, dynamic>{};
-    if (content != null) body['content'] = content;
-    if (embeds != null) {
-      body['embeds'] = embeds.map((e) => e.toJson()).toList();
+    final body = rawPayloadOverride != null
+        ? Map<String, dynamic>.from(rawPayloadOverride)
+        : <String, dynamic>{};
+    if (rawPayloadOverride == null) {
+      if (content != null) body['content'] = content;
+      if (embeds != null) {
+        body['embeds'] = embeds.map((e) => e.toJson()).toList();
+      }
     }
     final res = await _request(
       'PATCH',
@@ -370,6 +389,74 @@ class DiscordRestClient {
       'DELETE',
       '/channels/$channelId/messages/$messageId/reactions/$encoded/@me',
     );
+  }
+
+  /// Fetches users who reacted with [emojiApiIdentifier] (used by Vencord `WhoReacted`).
+  Future<List<DiscordUser>> getMessageReactionUsers(
+    String channelId,
+    String messageId,
+    String emojiApiIdentifier,
+  ) async {
+    final encoded = Uri.encodeComponent(emojiApiIdentifier);
+    final res = await _request(
+      'GET',
+      '/channels/$channelId/messages/$messageId/reactions/$encoded',
+      query: {'limit': '50'},
+    ) as List<dynamic>;
+    return res
+        .whereType<Map<String, dynamic>>()
+        .map(DiscordUser.fromJson)
+        .toList();
+  }
+
+  /// Fetches Application Emojis owned by the bot (`GET /applications/{appId}/emojis`,
+  /// matching `DiscordBotClient/src/AppCore/routes/users/@me/emojis.ts`).
+  Future<List<DiscordEmoji>> getApplicationEmojis(String applicationId) async {
+    final res = await _request(
+      'GET',
+      '/applications/${applicationId.trim()}/emojis',
+    );
+    final items = res is Map<String, dynamic>
+        ? (res['items'] as List<dynamic>? ?? const [])
+        : (res is List<dynamic> ? res : const <dynamic>[]);
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(DiscordEmoji.fromJson)
+        .where((e) => e.id != null && e.id!.isNotEmpty)
+        .toList();
+  }
+
+  /// Translates text using Google Translate GTX endpoint (matching Vencord `Translate` plugin).
+  Future<String> translateText(
+    String text, {
+    required String targetLang,
+  }) async {
+    final uri = Uri.https(
+      'translate.googleapis.com',
+      '/translate_a/single',
+      {
+        'client': 'gtx',
+        'sl': 'auto',
+        'tl': targetLang.trim().isEmpty ? 'zh-TW' : targetLang.trim(),
+        'dt': 't',
+        'q': text,
+      },
+    );
+    final res = await _httpClient.get(uri).timeout(const Duration(seconds: 12));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw DiscordApiException(res.statusCode, '翻譯服務回應錯誤');
+    }
+    final decoded = jsonDecode(utf8.decode(res.bodyBytes));
+    if (decoded is List && decoded.isNotEmpty && decoded[0] is List) {
+      final buf = StringBuffer();
+      for (final seg in (decoded[0] as List)) {
+        if (seg is List && seg.isNotEmpty && seg[0] != null) {
+          buf.write(seg[0].toString());
+        }
+      }
+      return buf.toString();
+    }
+    throw const DiscordApiException(500, '無法解析翻譯結果');
   }
 
   Future<void> triggerTyping(String channelId) async {

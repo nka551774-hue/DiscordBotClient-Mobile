@@ -1,6 +1,42 @@
 import 'package:flutter/material.dart';
 
+class VencordThemeOverrides {
+  final Color? railBg;
+  final Color? sidebarBg;
+  final Color? chatBg;
+  final Color? profileBg;
+  final Color? bottomBarBg;
+  final Color? cardBg;
+  final Color? elevatedBg;
+  final Color? selectedChannelBg;
+  final Color? inputBg;
+  final Color? border;
+  final Color? textPrimary;
+  final Color? textSecondary;
+  final Color? textMuted;
+  final Color? brand;
+
+  const VencordThemeOverrides({
+    this.railBg,
+    this.sidebarBg,
+    this.chatBg,
+    this.profileBg,
+    this.bottomBarBg,
+    this.cardBg,
+    this.elevatedBg,
+    this.selectedChannelBg,
+    this.inputBg,
+    this.border,
+    this.textPrimary,
+    this.textSecondary,
+    this.textMuted,
+    this.brand,
+  });
+}
+
 class DiscordPalette {
+  static VencordThemeOverrides? activeThemeOverrides;
+
   final bool oled;
 
   const DiscordPalette({required this.oled});
@@ -12,26 +48,47 @@ class DiscordPalette {
   static const Color danger = Color(0xFFF23F43);
   static const Color greyStatus = Color(0xFF80848E);
 
-  /// 2025/2026 Discord Mobile "Onyx" (oled = true, matching screenshots) & "Ash" (oled = false)
-  Color get railBg => oled ? const Color(0xFF000000) : const Color(0xFF1E1F22);
+  Color get brandColor => activeThemeOverrides?.brand ?? blurple;
+
+  /// 2025/2026 Discord Mobile "Onyx" (oled = true) & "Ash" (oled = false),
+  /// dynamically overridden when Vencord Online Themes or QuickCSS are active.
+  Color get railBg =>
+      activeThemeOverrides?.railBg ??
+      (oled ? const Color(0xFF000000) : const Color(0xFF1E1F22));
   Color get sidebarBg =>
-      oled ? const Color(0xFF14151A) : const Color(0xFF2B2D31);
-  Color get chatBg => oled ? const Color(0xFF101115) : const Color(0xFF313338);
+      activeThemeOverrides?.sidebarBg ??
+      (oled ? const Color(0xFF14151A) : const Color(0xFF2B2D31));
+  Color get chatBg =>
+      activeThemeOverrides?.chatBg ??
+      (oled ? const Color(0xFF101115) : const Color(0xFF313338));
   Color get profileBg =>
-      oled ? const Color(0xFF0C0D11) : const Color(0xFF18191C);
+      activeThemeOverrides?.profileBg ??
+      (oled ? const Color(0xFF0C0D11) : const Color(0xFF18191C));
   Color get bottomBarBg =>
-      oled ? const Color(0xFF181920) : const Color(0xFF1E1F22);
-  Color get cardBg => oled ? const Color(0xFF1A1B22) : const Color(0xFF2B2D31);
+      activeThemeOverrides?.bottomBarBg ??
+      (oled ? const Color(0xFF181920) : const Color(0xFF1E1F22));
+  Color get cardBg =>
+      activeThemeOverrides?.cardBg ??
+      (oled ? const Color(0xFF1A1B22) : const Color(0xFF2B2D31));
   Color get elevatedBg =>
-      oled ? const Color(0xFF22232B) : const Color(0xFF1E1F22);
+      activeThemeOverrides?.elevatedBg ??
+      (oled ? const Color(0xFF22232B) : const Color(0xFF1E1F22));
   Color get selectedChannelBg =>
-      oled ? const Color(0xFF262831) : const Color(0xFF393C43);
-  Color get inputBg => oled ? const Color(0xFF22232B) : const Color(0xFF383A40);
+      activeThemeOverrides?.selectedChannelBg ??
+      (oled ? const Color(0xFF262831) : const Color(0xFF393C43));
+  Color get inputBg =>
+      activeThemeOverrides?.inputBg ??
+      (oled ? const Color(0xFF22232B) : const Color(0xFF383A40));
   Color get loginInputBg => const Color(0xFF1E1F22);
-  Color get border => oled ? const Color(0xFF24252E) : const Color(0xFF3F4147);
-  Color get textPrimary => const Color(0xFFF2F3F5);
-  Color get textSecondary => const Color(0xFFB5BAC1);
-  Color get textMuted => const Color(0xFF8E929B);
+  Color get border =>
+      activeThemeOverrides?.border ??
+      (oled ? const Color(0xFF24252E) : const Color(0xFF3F4147));
+  Color get textPrimary =>
+      activeThemeOverrides?.textPrimary ?? const Color(0xFFF2F3F5);
+  Color get textSecondary =>
+      activeThemeOverrides?.textSecondary ?? const Color(0xFFB5BAC1);
+  Color get textMuted =>
+      activeThemeOverrides?.textMuted ?? const Color(0xFF8E929B);
 }
 
 ThemeData buildAppTheme({required bool oledBlack}) {
@@ -42,8 +99,8 @@ ThemeData buildAppTheme({required bool oledBlack}) {
     scaffoldBackgroundColor: p.railBg,
     canvasColor: p.sidebarBg,
     colorScheme: ColorScheme.dark(
-      primary: DiscordPalette.blurple,
-      secondary: DiscordPalette.blurple,
+      primary: p.brandColor,
+      secondary: p.brandColor,
       surface: p.cardBg,
       error: DiscordPalette.danger,
       onPrimary: Colors.white,

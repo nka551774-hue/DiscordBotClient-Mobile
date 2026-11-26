@@ -9,6 +9,7 @@ import '../models/discord_models.dart';
 import '../services/discord_gateway_service.dart';
 import '../services/discord_rest_client.dart';
 import '../services/discord_voice_service.dart';
+import '../services/vencord_engine.dart';
 
 class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const String _kAccountsKey = 'dbc_saved_accounts_v1';
@@ -19,9 +20,28 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const int _guildsPerShard = 1000;
 
   SharedPreferences? _prefs;
+  SharedPreferences? get prefs => _prefs;
   DiscordRestClient? _rest;
   DiscordGatewayService? _gateway;
   DiscordVoiceService? _voiceService;
+
+  late final VencordEngine vencord = VencordEngine(onChanged: _onVencordChanged);
+
+  // Bot Application Emojis (`VencordDBCPlugin/utils/application-emojis.ts`, 5-min TTL)
+  List<DiscordEmoji> _applicationEmojis = const [];
+  List<DiscordEmoji> get applicationEmojis => _applicationEmojis;
+  DateTime _applicationEmojisExpires = DateTime.fromMillisecondsSinceEpoch(0);
+  Future<List<DiscordEmoji>>? _pendingAppEmojisFuture;
+
+  void _onVencordChanged() {
+    if (!vencord.getSetting<bool>('BotClient', 'saveDirectMessage', true)) {
+      final botId = _activeAccount?.id;
+      if (botId != null) {
+        _prefs?.remove('$_kDmChannelsPrefix$botId');
+      }
+    }
+    notifyListeners();
+  }
 
   // Active Voice Channel state
   String? _activeVoiceGuildId;
@@ -209,6 +229,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> init() async {
     WidgetsBinding.instance.addObserver(this);
     _prefs = await SharedPreferences.getInstance();
+    await vencord.load(_prefs);
 
     final ecoRaw = _prefs?.getString(_kEcoSettingsKey);
     if (ecoRaw != null) {
@@ -328,7 +349,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       await _prefs?.setString(_kActiveAccountIdKey, account.id);
 
       _loadPersistedReadState(account.id);
-      _loadPersistedDmChannels(account.id);
+      if (vencord.getSetting<bool>('BotClient', 'saveDirectMessage', true)) {
+        _loadPersistedDmChannels(account.id);
+      }
+      unawaited(loadApplicationEmojis(force: true));
 
       try {
         final initialGuilds = await candidateRest.getUserGuilds();
@@ -425,6 +449,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _pendingVoiceEndpoint = null;
     _cachedDefaultSounds = null;
     _loadedSoundboardGuildIds.clear();
+    _applicationEmojis = const [];
+    _applicationEmojisExpires = DateTime.fromMillisecondsSinceEpoch(0);
+    _pendingAppEmojisFuture = null;
     voicePingMsNotifier.value = null;
     speakingUserIdsNotifier.value = const <String>{};
     _guilds.clear();
@@ -547,10 +574,43 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _savePersistedDmChannels() async {
+    if (!vencord.getSetting<bool>('BotClient', 'saveDirectMessage', true)) {
+      return;
+    }
     final botId = _activeAccount?.id;
     if (botId == null) return;
     final list = _dmChannels.values.take(80).map((c) => c.toJson()).toList();
     await _prefs?.setString('$_kDmChannelsPrefix$botId', jsonEncode(list));
+  }
+
+  /// Fetches and caches the bot's own Application Emojis (`GET /applications/{id}/emojis`)
+  /// with a 5-minute TTL matching `VencordDBCPlugin/utils/application-emojis.ts`.
+  Future<List<DiscordEmoji>> loadApplicationEmojis({bool force = false}) async {
+    final acc = _activeAccount;
+    if (_rest == null || acc == null) return const [];
+    if (!force && DateTime.now().isBefore(_applicationEmojisExpires)) {
+      return _applicationEmojis;
+    }
+    if (_pendingAppEmojisFuture != null) return _pendingAppEmojisFuture!;
+
+    final appId = (acc.applicationId != null && acc.applicationId!.isNotEmpty)
+        ? acc.applicationId!
+        : acc.id;
+    final fut = _rest!.getApplicationEmojis(appId).then((items) {
+      _applicationEmojis = List.unmodifiable(items);
+      _applicationEmojisExpires =
+          DateTime.now().add(const Duration(minutes: 5));
+      notifyListeners();
+      return _applicationEmojis;
+    }).catchError((_) {
+      _applicationEmojisExpires =
+          DateTime.now().add(const Duration(seconds: 30));
+      return _applicationEmojis;
+    }).whenComplete(() {
+      _pendingAppEmojisFuture = null;
+    });
+    _pendingAppEmojisFuture = fut;
+    return fut;
   }
 
   void toggleCategoryCollapse(String categoryId) {
@@ -721,6 +781,14 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
     final chObj = findChannelById(channelId);
     if (chObj != null && chObj.isForum) {
+      messagesNotifier.value = const [];
+      return;
+    }
+    // Vencord ShowHiddenChannels safeguard: avoid fetching messages on hidden channels
+    if (chObj != null &&
+        !chObj.isDm &&
+        selectedGuild != null &&
+        !canViewChannel(selectedGuild!, chObj)) {
       messagesNotifier.value = const [];
       return;
     }
@@ -950,13 +1018,59 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
 
+    // /override bitrate <value> from VencordDBCPlugin/index.tsx
+    if (cmd == '/override' &&
+        parts.length >= 3 &&
+        parts[1].toLowerCase() == 'bitrate') {
+      if (!vencord.getSetting<bool>(
+          'BotClient', 'overrideVoiceChannelBitrate', false)) {
+        throw const DiscordApiException(
+          400,
+          '請先於 設定 > Vencord > BotClient 開啟 Override Voice Channel Bitrate',
+        );
+      }
+      final kbps = int.tryParse(parts[2]) ?? -1;
+      if (kbps < 6 || kbps > 5000) {
+        throw const DiscordApiException(
+          400,
+          'Bitrate 數值必須介於 6 到 5000 Kbps 之間',
+        );
+      }
+      await vencord.setPluginSetting(
+        'BotClient',
+        'bitrateVoiceChannel',
+        kbps,
+        _prefs,
+      );
+      return '已將預設語音位元率覆寫設定為 $kbps Kbps';
+    }
+
+    // Execute any enabled Custom Vencord Userplugin commands
+    final bareCmd = cmd.substring(1);
+    for (final customCmd in vencord.enabledCustomCommands) {
+      if (customCmd.name.toLowerCase() == bareCmd) {
+        final argsText =
+            parts.length > 1 ? parts.sublist(1).join(' ') : '';
+        final tpl = customCmd.responseTemplate ?? 'Executed /${customCmd.name}';
+        final resolved = tpl.replaceAll('{args}', argsText).trim();
+        if (customCmd.sendToChannel && resolved.isNotEmpty) {
+          await sendChatMessage(content: resolved);
+          return 'Pong!';
+        }
+        return resolved;
+      }
+    }
+
     return null;
   }
 
   Future<DiscordMessage> sendChatMessage({
     String content = '',
     String? replyToMessageId,
+    bool replyMention = true,
+    bool silentMessage = false,
     List<DiscordEmbed>? embeds,
+    Map<String, dynamic>? rawPayloadOverride,
     Uint8List? fileBytes,
     String? fileName,
   }) async {
@@ -964,13 +1078,38 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     if (chId == null || _rest == null) {
       throw const DiscordApiException(400, '尚未選擇頻道');
     }
+
+    var processedContent = rawPayloadOverride == null
+        ? vencord.applyPreSendContentHooks(content)
+        : content;
+
+    if (rawPayloadOverride == null &&
+        processedContent.isNotEmpty &&
+        vencord.isPluginEnabled('Translate') &&
+        vencord.getSetting<bool>('Translate', 'autoTranslate', false)) {
+      try {
+        final targetLang =
+            vencord.getSetting<String>('Translate', 'sentTarget', 'en');
+        processedContent = await _rest!.translateText(
+          processedContent,
+          targetLang: targetLang,
+        );
+      } catch (_) {}
+    }
+
+    final finalFileName =
+        fileName != null ? vencord.maybeAnonymiseFileName(fileName) : null;
+
     final sent = await _rest!.sendMessage(
       chId,
-      content: content,
+      content: processedContent,
       replyToMessageId: replyToMessageId,
+      replyMention: replyMention,
+      flags: silentMessage ? (1 << 12) : null,
       embeds: embeds,
+      rawPayloadOverride: rawPayloadOverride,
       fileBytes: fileBytes,
-      fileName: fileName,
+      fileName: finalFileName,
     );
     _insertOrUpdateMessage(chId, sent, isNew: true);
     _markChannelRead(chId, messageId: sent.id);
@@ -981,6 +1120,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     String messageId, {
     String? newContent,
     List<DiscordEmbed>? embeds,
+    Map<String, dynamic>? rawPayloadOverride,
   }) async {
     final chId = _selectedChannelId;
     if (chId == null || _rest == null) return;
@@ -989,8 +1129,75 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       messageId,
       content: newContent,
       embeds: embeds,
+      rawPayloadOverride: rawPayloadOverride,
     );
     _insertOrUpdateMessage(chId, updated, isNew: false);
+  }
+
+  Future<void> translateMessageInline(DiscordMessage message) async {
+    if (_rest == null) return;
+    if (message.translatedText != null) {
+      _insertOrUpdateMessage(
+        message.channelId,
+        message.copyWith(clearTranslatedText: true),
+        isNew: false,
+      );
+      return;
+    }
+    final source = message.content.trim().isNotEmpty
+        ? message.content.trim()
+        : (message.embeds.isNotEmpty
+            ? (message.embeds.first.description ?? message.embeds.first.title ?? '')
+            : '');
+    if (source.isEmpty) return;
+    final targetLang =
+        vencord.getSetting<String>('Translate', 'receivedTarget', 'zh-TW');
+    final translated = await _rest!.translateText(
+      source,
+      targetLang: targetLang,
+    );
+    _insertOrUpdateMessage(
+      message.channelId,
+      message.copyWith(translatedText: translated),
+      isNew: false,
+    );
+  }
+
+  void clearLoggedMessageHistory(DiscordMessage message) {
+    final chId = message.channelId;
+    final existing = _messageCache[chId];
+    if (existing == null) return;
+    if (message.isDeleted) {
+      final next = existing.where((m) => m.id != message.id).toList();
+      _messageCache[chId] = next;
+      if (_selectedChannelId == chId) {
+        messagesNotifier.value = List.unmodifiable(next);
+      }
+    } else {
+      _insertOrUpdateMessage(
+        chId,
+        message.copyWith(editHistory: const []),
+        isNew: false,
+      );
+    }
+  }
+
+  bool _shouldMessageLoggerCapture(DiscordMessage msg, {required bool isDelete}) {
+    if (!vencord.isPluginEnabled('MessageLogger')) return false;
+    final flag = isDelete
+        ? vencord.getSetting<bool>('MessageLogger', 'logDeletes', true)
+        : vencord.getSetting<bool>('MessageLogger', 'logEdits', true);
+    if (!flag) return false;
+    if (vencord.getSetting<bool>('MessageLogger', 'ignoreBots', false) &&
+        msg.author.bot &&
+        msg.author.id != _activeAccount?.id) {
+      return false;
+    }
+    if (vencord.getSetting<bool>('MessageLogger', 'ignoreSelf', false) &&
+        msg.author.id == _activeAccount?.id) {
+      return false;
+    }
+    return true;
   }
 
   Future<void> deleteChatMessage(String messageId) async {
@@ -1038,6 +1245,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void notifyUserTyping() {
+    if (vencord.isPluginEnabled('SilentTyping') &&
+        vencord.getSetting<bool>('SilentTyping', 'isEnabled', true)) {
+      return;
+    }
     if (_ecoSettings.silentTyping || _ecoSettings.ecoPowerSaving) return;
     final chId = _selectedChannelId;
     if (chId == null || _rest == null) return;
@@ -1740,8 +1951,22 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             final idx = list.indexWhere((m) => m.id == msgId);
             if (idx != -1) {
               final existing = list[idx];
+              final incomingContent = data['content'] as String?;
+              List<MessageEditLogEntry> nextHistory = existing.editHistory;
+              if (incomingContent != null &&
+                  incomingContent != existing.content &&
+                  existing.content.isNotEmpty &&
+                  _shouldMessageLoggerCapture(existing, isDelete: false)) {
+                nextHistory = [
+                  ...existing.editHistory,
+                  MessageEditLogEntry(
+                    timestamp: DateTime.now(),
+                    content: existing.content,
+                  ),
+                ];
+              }
               final updated = existing.copyWith(
-                content: data['content'] as String? ?? existing.content,
+                content: incomingContent ?? existing.content,
                 editedTimestamp: data['edited_timestamp'] != null
                     ? DateTime.tryParse(data['edited_timestamp'] as String)
                         ?.toLocal()
@@ -1753,6 +1978,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
                         .map(DiscordEmbed.fromJson)
                         .toList()
                     : existing.embeds,
+                editHistory: nextHistory,
               );
               _insertOrUpdateMessage(chId, updated, isNew: false);
             }
@@ -1765,7 +1991,18 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           final chId = data['channel_id']?.toString();
           final msgId = data['id']?.toString();
           if (chId != null && msgId != null) {
-            _removeMessageFromCache(chId, msgId);
+            final cachedList = _messageCache[chId];
+            final idx = cachedList?.indexWhere((m) => m.id == msgId) ?? -1;
+            if (idx >= 0 &&
+                _shouldMessageLoggerCapture(cachedList![idx], isDelete: true)) {
+              _insertOrUpdateMessage(
+                chId,
+                cachedList[idx].copyWith(isDeleted: true),
+                isNew: false,
+              );
+            } else {
+              _removeMessageFromCache(chId, msgId);
+            }
           }
         }
         break;
@@ -1777,9 +2014,14 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               .map((e) => e.toString())
               .toSet();
           if (chId != null && _messageCache.containsKey(chId)) {
-            final next = _messageCache[chId]!
-                .where((m) => !ids.contains(m.id))
-                .toList();
+            final next = <DiscordMessage>[];
+            for (final m in _messageCache[chId]!) {
+              if (!ids.contains(m.id)) {
+                next.add(m);
+              } else if (_shouldMessageLoggerCapture(m, isDelete: true)) {
+                next.add(m.copyWith(isDeleted: true));
+              }
+            }
             _messageCache[chId] = next;
             if (_selectedChannelId == chId) {
               messagesNotifier.value = List.unmodifiable(next);

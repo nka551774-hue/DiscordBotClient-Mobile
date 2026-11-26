@@ -1,20 +1,27 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../models/discord_models.dart';
 import '../theme/app_theme.dart';
 
-/// 1:1 recreation of VencordDBCPlugin/components/EmbedEditor.tsx
-/// Supports BOTH Create mode and Edit mode for existing bot embeds!
+/// 1:1 recreation of VencordDBCPlugin/components/EmbedEditor.tsx + Advanced Message Editor (Components V2 / Raw JSON)!
+/// Supports BOTH Create mode and Edit mode for existing bot embeds & Components V2 payloads.
 class EmbedComposerSheet extends StatefulWidget {
   final DiscordPalette palette;
   final DiscordEmbed? initialEmbed;
+  final Map<String, dynamic>? initialRawMessage;
+  final bool advancedDefault;
   final void Function(DiscordEmbed embed, String optionalContent) onSend;
+  final void Function(Map<String, dynamic> rawPayload)? onSendRawPayload;
 
   const EmbedComposerSheet({
     super.key,
     required this.palette,
     this.initialEmbed,
+    this.initialRawMessage,
+    this.advancedDefault = false,
     required this.onSend,
+    this.onSendRawPayload,
   });
 
   @override
@@ -22,6 +29,11 @@ class EmbedComposerSheet extends StatefulWidget {
 }
 
 class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
+  late bool _jsonMode;
+  bool _componentsV2Flag = false;
+  late final TextEditingController _rawJsonCtrl;
+  String? _jsonError;
+
   late final TextEditingController _authorNameCtrl;
   late final TextEditingController _authorIconCtrl;
   late final TextEditingController _titleCtrl;
@@ -39,6 +51,37 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
   void initState() {
     super.initState();
     final init = widget.initialEmbed;
+    final rawMsg = widget.initialRawMessage;
+    _componentsV2Flag =
+        rawMsg != null && ((rawMsg['flags'] as int? ?? 0) & (1 << 15)) != 0;
+    _jsonMode = _componentsV2Flag || (rawMsg != null && init == null);
+
+    final defaultJsonMap = rawMsg != null
+        ? <String, dynamic>{
+            if (rawMsg['content'] != null) 'content': rawMsg['content'],
+            if (rawMsg['embeds'] != null) 'embeds': rawMsg['embeds'],
+            if (rawMsg['components'] != null &&
+                (rawMsg['components'] as List).isNotEmpty)
+              'components': rawMsg['components'],
+            if (_componentsV2Flag) 'flags': 32768,
+          }
+        : <String, dynamic>{
+            'content': '',
+            'embeds': [
+              if (init != null)
+                init.toJson()
+              else
+                {
+                  'title': 'Embed Title',
+                  'description': 'Write something...',
+                  'color': 5793266,
+                },
+            ],
+          };
+    _rawJsonCtrl = TextEditingController(
+      text: const JsonEncoder.withIndent('  ').convert(defaultJsonMap),
+    );
+
     _authorNameCtrl = TextEditingController(text: init?.authorName ?? '');
     _authorIconCtrl = TextEditingController(text: init?.authorIconUrl ?? '');
     _titleCtrl = TextEditingController(text: init?.title ?? '');
@@ -69,6 +112,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
 
   @override
   void dispose() {
+    _rawJsonCtrl.dispose();
     _authorNameCtrl.dispose();
     _authorIconCtrl.dispose();
     _titleCtrl.dispose();
@@ -94,6 +138,25 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
   }
 
   void _submit() {
+    if (_jsonMode && widget.onSendRawPayload != null) {
+      try {
+        final decoded = jsonDecode(_rawJsonCtrl.text);
+        if (decoded is! Map<String, dynamic>) {
+          setState(() => _jsonError = 'Payload 必須為 JSON 物件 {}');
+          return;
+        }
+        final map = Map<String, dynamic>.from(decoded);
+        if (_componentsV2Flag) {
+          map['flags'] = (map['flags'] as int? ?? 0) | (1 << 15);
+        }
+        Navigator.of(context).pop();
+        widget.onSendRawPayload!(map);
+      } catch (e) {
+        setState(() => _jsonError = 'JSON 語法錯誤：$e');
+      }
+      return;
+    }
+
     final validFields = _fields
         .where((f) =>
             f.nameCtrl.text.trim().isNotEmpty &&
@@ -139,7 +202,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
   Widget build(BuildContext context) {
     final p = widget.palette;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final isEdit = widget.initialEmbed != null;
+    final isEdit = widget.initialEmbed != null || widget.initialRawMessage != null;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -155,24 +218,45 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                 padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
                 child: Row(
                   children: [
-                    Text(
-                      isEdit ? 'Edit Embed' : 'Create Embed',
-                      style: TextStyle(
-                        color: p.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: Text(
+                        _jsonMode
+                            ? (isEdit
+                                ? 'Advanced Message Editor'
+                                : 'Advanced Message Editor')
+                            : (isEdit ? 'Edit Embed' : 'Create Embed'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: p.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                    const Spacer(),
+                    if (widget.onSendRawPayload != null)
+                      TextButton.icon(
+                        onPressed: () => setState(() {
+                          _jsonError = null;
+                          _jsonMode = !_jsonMode;
+                        }),
+                        icon: Icon(
+                          _jsonMode
+                              ? Icons.dashboard_customize_outlined
+                              : Icons.data_object_rounded,
+                          size: 16,
+                        ),
+                        label: Text(_jsonMode ? '表單模式' : 'JSON / V2'),
+                      ),
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text('Cancel',
                           style: TextStyle(color: p.textSecondary)),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 4),
                     FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: DiscordPalette.blurple,
+                        backgroundColor: p.brandColor,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -185,7 +269,63 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
               ),
               Divider(height: 1, color: p.border),
               Expanded(
-                child: ListView(
+                child: _jsonMode
+                    ? ListView(
+                        controller: scrollCtrl,
+                        padding: const EdgeInsets.all(14),
+                        children: [
+                          SwitchListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              '啟用 Components V2 (IS_COMPONENTS_V2 = 32768)',
+                              style: TextStyle(
+                                color: p.textPrimary,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '相容 Discohook 與 Discord Components V2 容器結構',
+                              style:
+                                  TextStyle(color: p.textMuted, fontSize: 12),
+                            ),
+                            value: _componentsV2Flag,
+                            onChanged: (v) =>
+                                setState(() => _componentsV2Flag = v),
+                          ),
+                          if (_jsonError != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              _jsonError!,
+                              style: const TextStyle(
+                                color: DiscordPalette.red,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _rawJsonCtrl,
+                            maxLines: 18,
+                            style: const TextStyle(
+                              color: Color(0xFFE3E5E8),
+                              fontSize: 12.5,
+                              fontFamily: 'monospace',
+                              height: 1.4,
+                            ),
+                            decoration: InputDecoration(
+                              filled: true,
+                              fillColor: p.inputBg,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: p.border),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView(
                   controller: scrollCtrl,
                   padding: const EdgeInsets.all(14),
                   children: [

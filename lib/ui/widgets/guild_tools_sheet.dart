@@ -5,6 +5,7 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'user_profile_sheet.dart';
+import 'vencord_sheets.dart';
 
 /// Authentic Discord Mobile Right Side-Panel / Drawer:
 /// - Channel Header + Topic
@@ -37,12 +38,14 @@ class _RoleGroupBucket {
   final String id;
   final String title;
   final int position;
+  final int? color;
   final List<DiscordMember> members = <DiscordMember>[];
 
   _RoleGroupBucket({
     required this.id,
     required this.title,
     required this.position,
+    this.color,
   });
 }
 
@@ -73,6 +76,10 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
   }
 
   Future<void> _ensureMembersLoaded({String? query}) async {
+    if (!widget.controller.vencord
+        .getSetting<bool>('BotClient', 'showMemberList', true)) {
+      return;
+    }
     final guild = widget.controller.selectedGuild;
     final rest = widget.controller.rest;
     if (guild == null || rest == null) return;
@@ -119,6 +126,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
             id: r.id,
             title: r.name,
             position: r.position,
+            color: r.color != 0 ? r.color : null,
           ),
         );
         b.members.add(m);
@@ -306,9 +314,11 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
             ],
             const SizedBox(height: 16),
 
-            // Circular Discord Action Row: 釘選 / 討論串 / 邀請 / 設定
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+            // Circular Discord Action Row: 釘選 / 討論串 / 邀請 / 設定 / Vencord 工具
+            Wrap(
+              alignment: WrapAlignment.spaceEvenly,
+              spacing: 14,
+              runSpacing: 10,
               children: [
                 _circleAction(
                   p,
@@ -348,6 +358,34 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                     label: '設定',
                     onTap: () => _showChannelEditDialog(channel),
                   ),
+                if (!channel.isDm &&
+                    widget.controller.vencord
+                        .isPluginEnabled('PermissionsViewer'))
+                  _circleAction(
+                    p,
+                    icon: Icons.admin_panel_settings_outlined,
+                    label: '權限',
+                    onTap: () => showVencordPermissionsModal(
+                      context,
+                      palette: p,
+                      title: '#${channel.name}',
+                      permissions: perms,
+                    ),
+                  ),
+                if (widget.controller.vencord.isPluginEnabled('ViewRaw'))
+                  _circleAction(
+                    p,
+                    icon: Icons.code_rounded,
+                    label: 'Raw',
+                    onTap: () => showVencordRawModal(
+                      context,
+                      palette: p,
+                      title: 'Channel',
+                      data: channel.toJson(),
+                      sortKeys: widget.controller.vencord
+                          .getSetting<bool>('ViewRaw', 'sortKeys', true),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -367,39 +405,59 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                 guildId: null,
               ),
           ] else if (guild != null) ...[
-            TextField(
-              controller: _searchCtrl,
-              onSubmitted: (q) => _ensureMembersLoaded(query: q),
-              style: TextStyle(color: p.textPrimary, fontSize: 14),
-              decoration: InputDecoration(
-                hintText: '搜尋成員',
-                hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
-                prefixIcon:
-                    Icon(Icons.search_rounded, size: 19, color: p.textMuted),
-                filled: true,
-                fillColor: p.elevatedBg,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 9),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
+            if (!widget.controller.vencord
+                .getSetting<bool>('BotClient', 'showMemberList', true))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    '已於 Vencord > BotClient 停用成員列表',
+                    style: TextStyle(color: p.textMuted, fontSize: 13),
+                  ),
+                ),
+              )
+            else ...[
+              TextField(
+                controller: _searchCtrl,
+                onSubmitted: (q) => _ensureMembersLoaded(query: q),
+                style: TextStyle(color: p.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: '搜尋成員',
+                  hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
+                  prefixIcon:
+                      Icon(Icons.search_rounded, size: 19, color: p.textMuted),
+                  filled: true,
+                  fillColor: p.elevatedBg,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            if (_loading && _members.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else
-              ...groupedBuckets.expand((bucket) => [
+              const SizedBox(height: 12),
+              if (_loading && _members.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                ...groupedBuckets.expand((bucket) {
+                  final colorHeader = widget.controller.vencord
+                          .isPluginEnabled('RoleColorEverywhere') &&
+                      widget.controller.vencord.getSetting<bool>(
+                          'RoleColorEverywhere', 'roleHeaders', true) &&
+                      bucket.color != null;
+                  return [
                     Padding(
                       padding: const EdgeInsets.only(top: 10, bottom: 4),
                       child: Text(
                         '${bucket.title.toUpperCase()} — ${bucket.members.length}',
                         style: TextStyle(
-                          color: p.textMuted,
+                          color: colorHeader
+                              ? Color(0xFF000000 | bucket.color!)
+                              : p.textMuted,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.4,
@@ -414,7 +472,9 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                           roleColorInt: m.resolveColor(guild.roles),
                           guildId: guild.id,
                         )),
-                  ]),
+                  ];
+                }),
+            ],
           ],
         ],
       ),
