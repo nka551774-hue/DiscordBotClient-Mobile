@@ -45,12 +45,6 @@ ThemeData buildAppTheme({required bool oledBlack}) {
       onPrimary: Colors.white,
       onSurface: p.textPrimary,
     ),
-    pageTransitionsTheme: const PageTransitionsTheme(
-      builders: {
-        TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-      },
-    ),
     appBarTheme: AppBarTheme(
       backgroundColor: p.chatBg,
       foregroundColor: p.textPrimary,
