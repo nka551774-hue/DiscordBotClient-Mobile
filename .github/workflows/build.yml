@@ -176,7 +176,7 @@ jobs:
             ## DiscordBotClient Mobile v1.0.0
             參考 `aiko-chan-ai/DiscordBotClient` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
 
-            ### 📦 下載檔案說明
+            ### 下載檔案說明
             - **Android (推薦現代手機)**: `DiscordBotClient-arm64-v8a.apk`（體積最小、純 64 位元原生機器碼）
             - **Android (通用版 / 模擬器)**: `DiscordBotClient-universal.apk`
             - **iOS (iPhone / iPad)**: `DiscordBotClient-ios.ipa`（支援 AltStore、SideStore、Sideloadly、TrollStore、Feather、ESign 側載安裝，已啟用 120Hz ProMotion）
