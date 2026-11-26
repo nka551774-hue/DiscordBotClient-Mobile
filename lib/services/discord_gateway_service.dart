@@ -390,6 +390,26 @@ class DiscordGatewayService {
     }
   }
 
+  /// Sends Gateway Opcode 4 (Voice State Update) to join, switch, mute/deafen, or leave a voice channel.
+  void sendVoiceStateUpdate({
+    required String guildId,
+    required String? channelId,
+    required bool selfMute,
+    required bool selfDeaf,
+  }) {
+    if (_socket != null && _state == GatewayConnectionState.connected) {
+      _sendJson({
+        'op': 4,
+        'd': {
+          'guild_id': guildId,
+          'channel_id': channelId,
+          'self_mute': selfMute,
+          'self_deaf': selfDeaf,
+        },
+      });
+    }
+  }
+
   void _sendJson(Map<String, dynamic> data) {
     try {
       _socket?.add(jsonEncode(data));

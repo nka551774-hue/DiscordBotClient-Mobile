@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/discord_models.dart';
 import '../services/discord_gateway_service.dart';
 import '../services/discord_rest_client.dart';
+import '../services/discord_voice_service.dart';
 
 class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const String _kAccountsKey = 'dbc_saved_accounts_v1';
@@ -20,6 +21,38 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   SharedPreferences? _prefs;
   DiscordRestClient? _rest;
   DiscordGatewayService? _gateway;
+  DiscordVoiceService? _voiceService;
+
+  // Active Voice Channel state
+  String? _activeVoiceGuildId;
+  String? get activeVoiceGuildId => _activeVoiceGuildId;
+  String? _activeVoiceChannelId;
+  String? get activeVoiceChannelId => _activeVoiceChannelId;
+  bool _selfMute = false;
+  bool get selfMute => _selfMute;
+  bool _selfDeaf = false;
+  bool get selfDeaf => _selfDeaf;
+  bool _voiceGatewayReady = false;
+  bool get voiceGatewayReady => _voiceGatewayReady;
+  String? _pendingVoiceSessionId;
+  String? _pendingVoiceToken;
+  String? _pendingVoiceEndpoint;
+
+  final ValueNotifier<int?> voicePingMsNotifier = ValueNotifier<int?>(null);
+  final ValueNotifier<Set<String>> speakingUserIdsNotifier =
+      ValueNotifier<Set<String>>(const <String>{});
+
+  DiscordChannel? get activeVoiceChannel {
+    if (_activeVoiceGuildId == null || _activeVoiceChannelId == null) {
+      return null;
+    }
+    final g = _guilds[_activeVoiceGuildId];
+    if (g == null) return null;
+    for (final c in g.channels) {
+      if (c.id == _activeVoiceChannelId) return c;
+    }
+    return null;
+  }
 
   EcoSettings _ecoSettings = const EcoSettings();
   EcoSettings get ecoSettings => _ecoSettings;
@@ -64,8 +97,12 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   final LinkedHashMap<String, DiscordChannel> _dmChannels =
       LinkedHashMap<String, DiscordChannel>();
-  List<DiscordChannel> get dmChannels =>
-      _dmChannels.values.toList(growable: false);
+  List<DiscordChannel> get dmChannels {
+    final list = _dmChannels.values.toList(growable: false);
+    list.sort((a, b) =>
+        compareSnowflakes(b.lastMessageId ?? b.id, a.lastMessageId ?? a.id));
+    return list;
+  }
 
   // True Read-State tracking: white dot ONLY appears when a newer message arrives!
   final Map<String, String> _lastReadMessageId = <String, String>{};
@@ -224,12 +261,15 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      if (_ecoSettings.ecoPowerSaving) {
+      // Never suspend Gateway while connected to a Voice Channel!
+      if (_ecoSettings.ecoPowerSaving && _activeVoiceChannelId == null) {
         _ecoSuspendTimer?.cancel();
         _ecoSuspendTimer = Timer(
           Duration(seconds: _ecoSettings.backgroundSuspendSeconds),
           () {
-            _gateway?.suspendForBackground();
+            if (_activeVoiceChannelId == null) {
+              _gateway?.suspendForBackground();
+            }
           },
         );
       }
@@ -359,12 +399,24 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _typingClearTimer?.cancel();
     _coalesceNotifyTimer?.cancel();
     _saveReadStateTimer?.cancel();
+    await _voiceService?.dispose();
+    _voiceService = null;
     await _gateway?.dispose();
     _gateway = null;
     _rest?.dispose();
     _rest = null;
 
     _activeAccount = null;
+    _activeVoiceGuildId = null;
+    _activeVoiceChannelId = null;
+    _selfMute = false;
+    _selfDeaf = false;
+    _voiceGatewayReady = false;
+    _pendingVoiceSessionId = null;
+    _pendingVoiceToken = null;
+    _pendingVoiceEndpoint = null;
+    voicePingMsNotifier.value = null;
+    speakingUserIdsNotifier.value = const <String>{};
     _guilds.clear();
     _dmChannels.clear();
     _messageCache.clear();
@@ -550,20 +602,46 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final resolvedGuild = guild!;
-    final candidates = resolvedGuild.channels
+    // Build visual Discord channel order:
+    // 1. Uncategorized text/announcement channels sorted by official 3-key Discord sort
+    // 2. Categories sorted by (position, snowflakeId), then each category's text channels
+    final categories = resolvedGuild.channels
+        .where((c) => c.isCategory)
+        .toList()
+      ..sort(DiscordChannel.compareCategories);
+    final categoryIds = categories.map((c) => c.id).toSet();
+
+    final orderedTextCandidates = <DiscordChannel>[];
+    final uncatText = resolvedGuild.channels
         .where((c) =>
+            (c.parentId == null || !categoryIds.contains(c.parentId)) &&
             c.isTopLevelChannel &&
+            !c.isVoice &&
             !c.isForum &&
             canViewChannel(resolvedGuild, c))
         .toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+      ..sort(DiscordChannel.compareGuildChannels);
+    orderedTextCandidates.addAll(uncatText);
 
-    if (candidates.isNotEmpty) {
-      final textCh = candidates.firstWhere(
+    for (final cat in categories) {
+      final catText = resolvedGuild.channels
+          .where((c) =>
+              c.parentId == cat.id &&
+              c.isTopLevelChannel &&
+              !c.isVoice &&
+              !c.isForum &&
+              canViewChannel(resolvedGuild, c))
+          .toList()
+        ..sort(DiscordChannel.compareGuildChannels);
+      orderedTextCandidates.addAll(catText);
+    }
+
+    if (orderedTextCandidates.isNotEmpty) {
+      final firstText = orderedTextCandidates.firstWhere(
         (c) => c.type == 0,
-        orElse: () => candidates.first,
+        orElse: () => orderedTextCandidates.first,
       );
-      await selectChannel(textCh.id, markRead: _isActivelyViewingChat);
+      await selectChannel(firstText.id, markRead: _isActivelyViewingChat);
     } else {
       _selectedChannelId = null;
       messagesNotifier.value = const [];
@@ -1000,6 +1078,204 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  // ==========================================================
+  // Voice Channel Connection Management (Opcode 4 + Voice WS)
+  // ==========================================================
+  void _ensureVoiceServiceInitialized() {
+    if (_voiceService != null) return;
+    _voiceService = DiscordVoiceService(
+      onSpeakingChanged: (uid, isSpeaking) {
+        final cur = speakingUserIdsNotifier.value;
+        if (isSpeaking && !cur.contains(uid)) {
+          speakingUserIdsNotifier.value = <String>{...cur, uid};
+        } else if (!isSpeaking && cur.contains(uid)) {
+          final next = Set<String>.from(cur)..remove(uid);
+          speakingUserIdsNotifier.value = next;
+        }
+      },
+      onVoicePingUpdated: (ms) {
+        voicePingMsNotifier.value = ms;
+      },
+      onConnectionChanged: (connected) {
+        if (_voiceGatewayReady != connected) {
+          _voiceGatewayReady = connected;
+          notifyListeners();
+        }
+      },
+    );
+  }
+
+  Future<void> joinVoiceChannel(
+    String guildId,
+    String channelId, {
+    bool startMuted = false,
+  }) async {
+    if (_gateway == null) return;
+    _ensureVoiceServiceInitialized();
+
+    // If switching from another guild's voice channel, disconnect previous guild first (matching VencordDBCPlugin/utils/patches.ts!)
+    final prevGuildId = _activeVoiceGuildId;
+    final botId = _activeAccount?.id;
+    if (prevGuildId != null && prevGuildId != guildId) {
+      if (botId != null && _guilds.containsKey(prevGuildId)) {
+        final pg = _guilds[prevGuildId]!;
+        final nextPrevVs = Map<String, VoiceState>.from(pg.voiceStates)
+          ..remove(botId);
+        _guilds[prevGuildId] = pg.copyWith(voiceStates: nextPrevVs);
+      }
+      _gateway!.sendVoiceStateUpdate(
+        guildId: prevGuildId,
+        channelId: null,
+        selfMute: _selfMute,
+        selfDeaf: _selfDeaf,
+      );
+      await _voiceService?.disconnect(notify: false);
+    }
+
+    _activeVoiceGuildId = guildId;
+    _activeVoiceChannelId = channelId;
+    _selfMute = startMuted;
+    if (_selfDeaf && !startMuted) {
+      _selfMute = true;
+    }
+    _pendingVoiceToken = null;
+    _pendingVoiceEndpoint = null;
+    speakingUserIdsNotifier.value = const <String>{};
+
+    // Optimistic local voice_state update for 0ms UI feedback before Gateway round-trip
+    if (botId != null && _guilds.containsKey(guildId)) {
+      final g = _guilds[guildId]!;
+      final nextVs = Map<String, VoiceState>.from(g.voiceStates);
+      nextVs[botId] = VoiceState(
+        guildId: guildId,
+        channelId: channelId,
+        userId: botId,
+        sessionId: _pendingVoiceSessionId ?? '',
+        selfMute: _selfMute,
+        selfDeaf: _selfDeaf,
+        member: g.cachedMembers[botId],
+      );
+      _guilds[guildId] = g.copyWith(voiceStates: nextVs);
+    }
+
+    _gateway!.sendVoiceStateUpdate(
+      guildId: guildId,
+      channelId: channelId,
+      selfMute: _selfMute,
+      selfDeaf: _selfDeaf,
+    );
+    notifyListeners();
+  }
+
+  void toggleVoiceMute() {
+    if (_activeVoiceGuildId == null ||
+        _activeVoiceChannelId == null ||
+        _gateway == null) {
+      return;
+    }
+    _selfMute = !_selfMute;
+    if (!_selfMute && _selfDeaf) {
+      _selfDeaf = false;
+    }
+    _syncOptimisticBotVoiceFlags();
+    _gateway!.sendVoiceStateUpdate(
+      guildId: _activeVoiceGuildId!,
+      channelId: _activeVoiceChannelId,
+      selfMute: _selfMute,
+      selfDeaf: _selfDeaf,
+    );
+    notifyListeners();
+  }
+
+  void toggleVoiceDeaf() {
+    if (_activeVoiceGuildId == null ||
+        _activeVoiceChannelId == null ||
+        _gateway == null) {
+      return;
+    }
+    _selfDeaf = !_selfDeaf;
+    if (_selfDeaf) {
+      _selfMute = true;
+    }
+    _syncOptimisticBotVoiceFlags();
+    _gateway!.sendVoiceStateUpdate(
+      guildId: _activeVoiceGuildId!,
+      channelId: _activeVoiceChannelId,
+      selfMute: _selfMute,
+      selfDeaf: _selfDeaf,
+    );
+    notifyListeners();
+  }
+
+  void _syncOptimisticBotVoiceFlags() {
+    final gId = _activeVoiceGuildId;
+    final chId = _activeVoiceChannelId;
+    final botId = _activeAccount?.id;
+    if (gId == null || chId == null || botId == null) return;
+    final g = _guilds[gId];
+    if (g == null) return;
+    final prev = g.voiceStates[botId];
+    final nextVs = Map<String, VoiceState>.from(g.voiceStates);
+    nextVs[botId] = VoiceState(
+      guildId: gId,
+      channelId: chId,
+      userId: botId,
+      sessionId: prev?.sessionId ?? _pendingVoiceSessionId ?? '',
+      mute: prev?.mute ?? false,
+      deaf: prev?.deaf ?? false,
+      selfMute: _selfMute,
+      selfDeaf: _selfDeaf,
+      suppress: prev?.suppress ?? false,
+      member: prev?.member ?? g.cachedMembers[botId],
+    );
+    _guilds[gId] = g.copyWith(voiceStates: nextVs);
+  }
+
+  Future<void> leaveVoiceChannel() async {
+    final prevGuild = _activeVoiceGuildId;
+    final botId = _activeAccount?.id;
+    if (prevGuild != null && botId != null && _guilds.containsKey(prevGuild)) {
+      final g = _guilds[prevGuild]!;
+      final nextVs = Map<String, VoiceState>.from(g.voiceStates)..remove(botId);
+      _guilds[prevGuild] = g.copyWith(voiceStates: nextVs);
+    }
+    _activeVoiceGuildId = null;
+    _activeVoiceChannelId = null;
+    _voiceGatewayReady = false;
+    _pendingVoiceSessionId = null;
+    _pendingVoiceToken = null;
+    _pendingVoiceEndpoint = null;
+    speakingUserIdsNotifier.value = const <String>{};
+    await _voiceService?.disconnect(notify: false);
+    if (prevGuild != null) {
+      _gateway?.sendVoiceStateUpdate(
+        guildId: prevGuild,
+        channelId: null,
+        selfMute: _selfMute,
+        selfDeaf: _selfDeaf,
+      );
+    }
+    notifyListeners();
+  }
+
+  void _tryConnectVoiceSocket() {
+    if (_activeVoiceGuildId == null ||
+        _activeAccount == null ||
+        _pendingVoiceSessionId == null ||
+        _pendingVoiceToken == null ||
+        _pendingVoiceEndpoint == null) {
+      return;
+    }
+    _ensureVoiceServiceInitialized();
+    unawaited(_voiceService!.connect(
+      guildId: _activeVoiceGuildId!,
+      userId: _activeAccount!.id,
+      sessionId: _pendingVoiceSessionId!,
+      voiceToken: _pendingVoiceToken!,
+      endpoint: _pendingVoiceEndpoint!,
+    ));
+  }
+
   Future<void> updateEcoSettings(
     EcoSettings nextSettings, {
     bool reconnectGateway = false,
@@ -1022,7 +1298,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             data,
             currentBotUserId: _activeAccount?.id,
           );
-          _guilds[parsed.id] = parsed;
+          final prev = _guilds[parsed.id];
+          _guilds[parsed.id] = prev != null && parsed.voiceStates.isEmpty
+              ? parsed.copyWith(voiceStates: prev.voiceStates)
+              : parsed;
           _syncChannelReadBaseline(parsed.channels);
           if (_selectedGuildId == null && _dmChannels.isEmpty) {
             unawaited(selectGuild(parsed.id));
@@ -1031,6 +1310,71 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             unawaited(selectGuild(parsed.id));
           } else {
             _scheduleCoalescedNotify();
+          }
+        }
+        break;
+
+      case 'VOICE_STATE_UPDATE':
+        if (data is Map<String, dynamic>) {
+          final vs = VoiceState.fromJson(data);
+          final gId = vs.guildId;
+          if (gId != null && _guilds.containsKey(gId)) {
+            final g = _guilds[gId]!;
+            final nextVs = Map<String, VoiceState>.from(g.voiceStates);
+            final nextMembers = Map<String, DiscordMember>.from(g.cachedMembers);
+            if (vs.member != null && vs.member!.user.id != '0') {
+              nextMembers[vs.member!.user.id] = vs.member!;
+            }
+            if (vs.channelId == null || vs.channelId!.isEmpty) {
+              nextVs.remove(vs.userId);
+              if (speakingUserIdsNotifier.value.contains(vs.userId)) {
+                final nextSpk = Set<String>.from(speakingUserIdsNotifier.value)
+                  ..remove(vs.userId);
+                speakingUserIdsNotifier.value = nextSpk;
+              }
+            } else {
+              nextVs[vs.userId] = vs;
+            }
+            _guilds[gId] = g.copyWith(
+              voiceStates: nextVs,
+              cachedMembers: nextMembers,
+            );
+          }
+
+          // Check if this is our own Bot's voice state update!
+          if (vs.userId == _activeAccount?.id) {
+            if (vs.channelId == null || vs.channelId!.isEmpty) {
+              if (gId == _activeVoiceGuildId) {
+                _activeVoiceGuildId = null;
+                _activeVoiceChannelId = null;
+                _voiceGatewayReady = false;
+                unawaited(_voiceService?.disconnect(notify: false));
+              }
+            } else {
+              _activeVoiceGuildId = gId ?? _activeVoiceGuildId;
+              _activeVoiceChannelId = vs.channelId;
+              if (vs.sessionId.isNotEmpty) {
+                _pendingVoiceSessionId = vs.sessionId;
+                _tryConnectVoiceSocket();
+              }
+            }
+          }
+          _scheduleCoalescedNotify();
+        }
+        break;
+
+      case 'VOICE_SERVER_UPDATE':
+        if (data is Map<String, dynamic>) {
+          final gId = data['guild_id']?.toString();
+          final vToken = data['token']?.toString();
+          final endpoint = data['endpoint']?.toString();
+          if (gId == _activeVoiceGuildId &&
+              vToken != null &&
+              endpoint != null &&
+              endpoint.isNotEmpty) {
+            _pendingVoiceToken = vToken;
+            _pendingVoiceEndpoint = endpoint;
+            _tryConnectVoiceSocket();
           }
         }
         break;
@@ -1318,6 +1662,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _teardownSession(clearActivePref: false);
     pingMsNotifier.dispose();
+    voicePingMsNotifier.dispose();
+    speakingUserIdsNotifier.dispose();
     gatewayEventsCountNotifier.dispose();
     messagesNotifier.dispose();
     loadingMessagesNotifier.dispose();

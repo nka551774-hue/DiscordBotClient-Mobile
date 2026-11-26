@@ -170,11 +170,17 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "DiscordBotClient Mobile v1.0.0 (Android APK & iOS IPA)"
+          tag_name: v1.4.0
+          make_latest: true
+          name: "DiscordBotClient Mobile v1.4.0 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.0.0
-            參考 `aiko-chan-ai/DiscordBotClient` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+            ## DiscordBotClient Mobile v1.4.0
+            參考 `aiko-chan-ai/DiscordBotClient` 與 `aiko-chan-ai/VencordDBCPlugin` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.4.0 更新內容
+            - **語音頻道預覽與語音房間**：點擊語音或舞台頻道會開啟原版語音預覽面板（可檢視在線成員、切換預先靜音並點擊「加入語音」），不再直接跳入文字聊天室；透過面板或頻道列右側的對話按鈕可隨時開啟語音文字聊天室 (Text-in-Voice)。
+            - **Discord 語音閘道即時連線**：支援 Gateway Opcode 4 與 Voice Gateway v4 + UDP IP Discovery 連線、跨伺服器自動切換語音、靜音 / 拒聽 / 掛斷控制、即時語音延遲 (ms)、成員說話綠框 (Opcode 5)、頻道下方縮排顯示連線成員，以及頂部常駐綠色語音狀態列。
+            - **官方三鍵頻道精準排序**：實作 Discord 官方三鍵排序（文字 / 語音類型分桶 `sortBucket` -> `position` -> Snowflake ID 升冪決勝），修正分類內與未分類頻道排序錯亂問題，並確保私訊依最新訊息時間排序。
 
             ### 下載檔案說明
             - **Android (推薦現代手機)**: `DiscordBotClient-arm64-v8a.apk`（體積最小、純 64 位元原生機器碼）

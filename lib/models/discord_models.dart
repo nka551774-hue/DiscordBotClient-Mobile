@@ -28,6 +28,7 @@ class EcoSettings {
   }) {
     int mask = 0;
     mask |= (1 << 0); // GUILDS
+    mask |= (1 << 7); // GUILD_VOICE_STATES (standard non-privileged intent for live voice channels!)
     mask |= (1 << 9); // GUILD_MESSAGES
     mask |= (1 << 10); // GUILD_MESSAGE_REACTIONS
     mask |= (1 << 12); // DIRECT_MESSAGES
@@ -551,6 +552,8 @@ class DiscordChannel {
   final List<PermissionOverwrite> permissionOverwrites;
   final List<DiscordUser> recipients;
   final int? messageCount;
+  final int userLimit;
+  final int? bitrate;
 
   const DiscordChannel({
     required this.id,
@@ -565,13 +568,35 @@ class DiscordChannel {
     this.permissionOverwrites = const [],
     this.recipients = const [],
     this.messageCount,
+    this.userLimit = 0,
+    this.bitrate,
   });
 
   bool get isCategory => type == 4;
   bool get isDm => type == 1 || type == 3;
   bool get isVoice => type == 2 || type == 13;
+  bool get isStageVoice => type == 13;
   bool get isForum => type == 15 || type == 16;
   bool get isThread => type == 10 || type == 11 || type == 12;
+
+  /// Official Discord sort bucket:
+  /// Bucket 0: Text (0), Announcement (5), Forum (15), Media (16), Directory (14)
+  /// Bucket 1: Voice (2), Stage Voice (13) — ALWAYS sorted after Bucket 0 within each category!
+  int get sortBucket => (type == 2 || type == 13) ? 1 : 0;
+
+  static int compareCategories(DiscordChannel a, DiscordChannel b) {
+    final posCmp = a.position.compareTo(b.position);
+    if (posCmp != 0) return posCmp;
+    return compareSnowflakes(a.id, b.id);
+  }
+
+  static int compareGuildChannels(DiscordChannel a, DiscordChannel b) {
+    final bucketCmp = a.sortBucket.compareTo(b.sortBucket);
+    if (bucketCmp != 0) return bucketCmp;
+    final posCmp = a.position.compareTo(b.position);
+    if (posCmp != 0) return posCmp;
+    return compareSnowflakes(a.id, b.id);
+  }
 
   /// Visible in the server's main channel tree (threads live under parent/forum).
   bool get isTopLevelChannel =>
@@ -586,6 +611,7 @@ class DiscordChannel {
       type == 10 ||
       type == 11 ||
       type == 12 ||
+      type == 13 ||
       type == 15;
 
   String get displayTitle {
@@ -606,6 +632,8 @@ class DiscordChannel {
     int? rateLimitPerUser,
     List<PermissionOverwrite>? permissionOverwrites,
     List<DiscordUser>? recipients,
+    int? userLimit,
+    int? bitrate,
   }) {
     return DiscordChannel(
       id: id,
@@ -620,6 +648,8 @@ class DiscordChannel {
       permissionOverwrites: permissionOverwrites ?? this.permissionOverwrites,
       recipients: recipients ?? this.recipients,
       messageCount: messageCount,
+      userLimit: userLimit ?? this.userLimit,
+      bitrate: bitrate ?? this.bitrate,
     );
   }
 
@@ -633,6 +663,8 @@ class DiscordChannel {
         'topic': topic,
         'last_message_id': lastMessageId,
         'rate_limit_per_user': rateLimitPerUser,
+        'user_limit': userLimit,
+        if (bitrate != null) 'bitrate': bitrate,
         'permission_overwrites':
             permissionOverwrites.map((e) => e.toJson()).toList(),
         'recipients': recipients.map((e) => e.toJson()).toList(),
@@ -668,6 +700,59 @@ class DiscordChannel {
           .toList(),
       recipients: recipients,
       messageCount: json['message_count'] as int?,
+      userLimit: json['user_limit'] as int? ?? 0,
+      bitrate: json['bitrate'] as int?,
+    );
+  }
+}
+
+class VoiceState {
+  final String? guildId;
+  final String? channelId;
+  final String userId;
+  final String sessionId;
+  final bool deaf;
+  final bool mute;
+  final bool selfDeaf;
+  final bool selfMute;
+  final bool selfStream;
+  final bool selfVideo;
+  final bool suppress;
+  final DiscordMember? member;
+
+  const VoiceState({
+    this.guildId,
+    this.channelId,
+    required this.userId,
+    required this.sessionId,
+    this.deaf = false,
+    this.mute = false,
+    this.selfDeaf = false,
+    this.selfMute = false,
+    this.selfStream = false,
+    this.selfVideo = false,
+    this.suppress = false,
+    this.member,
+  });
+
+  bool get isMuted => mute || selfMute || suppress;
+  bool get isDeafened => deaf || selfDeaf;
+
+  factory VoiceState.fromJson(Map<String, dynamic> json, {String? guildId}) {
+    final mJson = json['member'] as Map<String, dynamic>?;
+    return VoiceState(
+      guildId: json['guild_id']?.toString() ?? guildId,
+      channelId: json['channel_id']?.toString(),
+      userId: json['user_id']?.toString() ?? '0',
+      sessionId: json['session_id']?.toString() ?? '',
+      deaf: json['deaf'] as bool? ?? false,
+      mute: json['mute'] as bool? ?? false,
+      selfDeaf: json['self_deaf'] as bool? ?? false,
+      selfMute: json['self_mute'] as bool? ?? false,
+      selfStream: json['self_stream'] as bool? ?? false,
+      selfVideo: json['self_video'] as bool? ?? false,
+      suppress: json['suppress'] as bool? ?? false,
+      member: mJson != null ? DiscordMember.fromJson(mJson) : null,
     );
   }
 }
@@ -714,6 +799,7 @@ class DiscordGuild {
   final List<DiscordChannel> channels;
   final List<DiscordEmoji> emojis;
   final Map<String, DiscordMember> cachedMembers;
+  final Map<String, VoiceState> voiceStates;
   final List<String> botRoleIds;
   final bool channelsLoaded;
 
@@ -730,9 +816,16 @@ class DiscordGuild {
     this.channels = const [],
     this.emojis = const [],
     this.cachedMembers = const {},
+    this.voiceStates = const {},
     this.botRoleIds = const [],
     this.channelsLoaded = false,
   });
+
+  List<VoiceState> voiceStatesForChannel(String channelId) {
+    return voiceStates.values
+        .where((vs) => vs.channelId == channelId)
+        .toList(growable: false);
+  }
 
   bool get isCommunity => features.contains('COMMUNITY');
   bool get isVerified => features.contains('VERIFIED');
@@ -766,6 +859,7 @@ class DiscordGuild {
     List<DiscordChannel>? channels,
     List<DiscordEmoji>? emojis,
     Map<String, DiscordMember>? cachedMembers,
+    Map<String, VoiceState>? voiceStates,
     List<String>? botRoleIds,
     bool? channelsLoaded,
   }) {
@@ -782,6 +876,7 @@ class DiscordGuild {
       channels: channels ?? this.channels,
       emojis: emojis ?? this.emojis,
       cachedMembers: cachedMembers ?? this.cachedMembers,
+      voiceStates: voiceStates ?? this.voiceStates,
       botRoleIds: botRoleIds ?? this.botRoleIds,
       channelsLoaded: channelsLoaded ?? this.channelsLoaded,
     );
@@ -844,6 +939,21 @@ class DiscordGuild {
       }
     }
 
+    final voiceStatesMap = <String, VoiceState>{};
+    if (json['voice_states'] is List<dynamic>) {
+      for (final vsRaw in (json['voice_states'] as List<dynamic>)) {
+        if (vsRaw is Map<String, dynamic>) {
+          final vs = VoiceState.fromJson(vsRaw, guildId: guildId);
+          if (vs.channelId != null && vs.userId != '0') {
+            voiceStatesMap[vs.userId] = vs;
+            if (vs.member != null && vs.member!.user.id != '0') {
+              membersMap[vs.member!.user.id] = vs.member!;
+            }
+          }
+        }
+      }
+    }
+
     return DiscordGuild(
       id: guildId,
       name: json['name'] as String? ?? 'Server',
@@ -858,6 +968,7 @@ class DiscordGuild {
       channels: parsedChannels,
       emojis: parsedEmojis,
       cachedMembers: membersMap,
+      voiceStates: voiceStatesMap,
       botRoleIds: botRoles,
       channelsLoaded: channelsRaw != null,
     );

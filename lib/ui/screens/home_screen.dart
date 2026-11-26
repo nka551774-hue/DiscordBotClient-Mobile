@@ -11,6 +11,7 @@ import '../widgets/embed_composer_sheet.dart';
 import '../widgets/guild_tools_sheet.dart';
 import '../widgets/message_tile.dart';
 import '../widgets/settings_sheet.dart';
+import '../widgets/voice_channel_sheet.dart';
 
 /// Authentic 2025/2026 Discord Mobile 3-Panel Gesture Architecture:
 /// - Panel -1.0 (Left): Server Rail + Channel/DM List + Clean Solid Floating You Bar
@@ -85,6 +86,106 @@ class _HomeScreenState extends State<HomeScreen>
       widget.controller.selectChannel(channelId, markRead: true);
     }
     _animateToPanel(0.0);
+  }
+
+  void _openVoiceSheet(DiscordGuild guild, DiscordChannel channel) {
+    showVoiceChannelSheet(
+      context,
+      controller: widget.controller,
+      guild: guild,
+      channel: channel,
+      onOpenVoiceTextChat: (chId, gId) {
+        _openChannelChat(chId, guildId: gId);
+      },
+    );
+  }
+
+  Widget _buildActiveVoiceStatusBar(
+    BotClientController ctrl,
+    DiscordPalette p,
+  ) {
+    final voiceCh = ctrl.activeVoiceChannel;
+    final voiceGuild = ctrl.findGuildById(ctrl.activeVoiceGuildId);
+    if (voiceCh == null || voiceGuild == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Material(
+      color: const Color(0xFF16291F),
+      child: InkWell(
+        onTap: () => _openVoiceSheet(voiceGuild, voiceCh),
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: const BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: Color(0xFF234433), width: 0.8),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.volume_up_rounded,
+                size: 17,
+                color: DiscordPalette.green,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: ValueListenableBuilder<int?>(
+                  valueListenable: ctrl.voicePingMsNotifier,
+                  builder: (_, pingMs, __) {
+                    final pingPart = pingMs != null ? ' ($pingMs ms)' : '';
+                    return Text(
+                      '${voiceCh.name} • ${voiceGuild.name}$pingPart',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFE3FCEF),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  ctrl.toggleVoiceMute();
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Icon(
+                    ctrl.selfMute ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    size: 18,
+                    color: ctrl.selfMute
+                        ? DiscordPalette.red
+                        : const Color(0xFFE3FCEF),
+                  ),
+                ),
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  ctrl.leaveVoiceChannel();
+                },
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 6, right: 2, top: 6, bottom: 6),
+                  child: Icon(
+                    Icons.call_end_rounded,
+                    size: 19,
+                    color: DiscordPalette.red,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _showNewMessageModal(DiscordPalette p) async {
@@ -425,36 +526,45 @@ class _HomeScreenState extends State<HomeScreen>
       return Scaffold(
         backgroundColor: p.railBg,
         body: SafeArea(
-          child: Row(
+          child: Column(
             children: [
-              SizedBox(
-                width: 340,
-                child: _buildLeftNavigationPanel(ctrl, p),
-              ),
-              VerticalDivider(width: 1, color: p.border),
+              if (ctrl.activeVoiceChannel != null)
+                _buildActiveVoiceStatusBar(ctrl, p),
               Expanded(
-                child: _DiscordChatPane(
-                  controller: ctrl,
-                  palette: p,
-                  showBackButton: false,
-                  onBack: () {},
-                  onToggleRightDrawer: () {},
-                  onSelectForumPost: (threadId) =>
-                      ctrl.selectChannel(threadId, markRead: true),
-                  onOpenDmFromChat: (uid) async {
-                    await ctrl.openDmWithUser(uid);
-                  },
-                ),
-              ),
-              VerticalDivider(width: 1, color: p.border),
-              SizedBox(
-                width: 280,
-                child: ChannelDetailsSidePanel(
-                  controller: ctrl,
-                  palette: p,
-                  onOpenPins: () => _openPinsModal(p),
-                  onSelectThread: (tid) =>
-                      ctrl.selectChannel(tid, markRead: true),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 340,
+                      child: _buildLeftNavigationPanel(ctrl, p),
+                    ),
+                    VerticalDivider(width: 1, color: p.border),
+                    Expanded(
+                      child: _DiscordChatPane(
+                        controller: ctrl,
+                        palette: p,
+                        showBackButton: false,
+                        onBack: () {},
+                        onToggleRightDrawer: () {},
+                        onOpenVoiceRoom: (g, ch) => _openVoiceSheet(g, ch),
+                        onSelectForumPost: (threadId) =>
+                            ctrl.selectChannel(threadId, markRead: true),
+                        onOpenDmFromChat: (uid) async {
+                          await ctrl.openDmWithUser(uid);
+                        },
+                      ),
+                    ),
+                    VerticalDivider(width: 1, color: p.border),
+                    SizedBox(
+                      width: 280,
+                      child: ChannelDetailsSidePanel(
+                        controller: ctrl,
+                        palette: p,
+                        onOpenPins: () => _openPinsModal(p),
+                        onSelectThread: (tid) =>
+                            ctrl.selectChannel(tid, markRead: true),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -484,8 +594,13 @@ class _HomeScreenState extends State<HomeScreen>
             backgroundColor: p.railBg,
             body: SafeArea(
               bottom: v > -0.5,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
+              child: Column(
+                children: [
+                  if (ctrl.activeVoiceChannel != null)
+                    _buildActiveVoiceStatusBar(ctrl, p),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
                   final w = constraints.maxWidth;
                   final rightDrawerW = w * 0.84;
 
@@ -585,6 +700,8 @@ class _HomeScreenState extends State<HomeScreen>
                                         onBack: () => _animateToPanel(-1.0),
                                         onToggleRightDrawer: () =>
                                             _animateToPanel(1.0),
+                                        onOpenVoiceRoom: (g, ch) =>
+                                            _openVoiceSheet(g, ch),
                                         onSelectForumPost: (tid) =>
                                             _openChannelChat(
                                           tid,
@@ -656,11 +773,14 @@ class _HomeScreenState extends State<HomeScreen>
                 },
               ),
             ),
-          ),
-        );
-      },
-    );
-  }
+          ],
+        ),
+      ),
+    ),
+  );
+},
+);
+}
 
   Widget _buildLeftNavigationPanel(
     BotClientController ctrl,
@@ -1050,19 +1170,50 @@ class _HomeScreenState extends State<HomeScreen>
     return buf.toString();
   }
 
+  List<DiscordChannel> _orderedVisibleGuildChannels(
+    DiscordGuild guild,
+    BotClientController ctrl,
+  ) {
+    final allChannels = guild.channels;
+    final allCategoryIds =
+        allChannels.where((c) => c.isCategory).map((c) => c.id).toSet();
+    final categories = allChannels.where((c) => c.isCategory).toList()
+      ..sort(DiscordChannel.compareCategories);
+
+    final result = <DiscordChannel>[];
+    final uncat = allChannels
+        .where((c) =>
+            (c.parentId == null || !allCategoryIds.contains(c.parentId)) &&
+            c.isTopLevelChannel &&
+            ctrl.canViewChannel(guild, c))
+        .toList()
+      ..sort(DiscordChannel.compareGuildChannels);
+    result.addAll(uncat);
+
+    for (final cat in categories) {
+      final children = allChannels
+          .where((c) =>
+              c.parentId == cat.id &&
+              c.isTopLevelChannel &&
+              ctrl.canViewChannel(guild, c))
+          .toList()
+        ..sort(DiscordChannel.compareGuildChannels);
+      result.addAll(children);
+    }
+    return result;
+  }
+
   void _showChannelQuickSearch(DiscordGuild guild, DiscordPalette p) {
     final qCtrl = TextEditingController();
     String q = '';
+    final orderedBase = _orderedVisibleGuildChannels(guild, widget.controller);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setM) {
-          final filtered = guild.channels
-              .where((c) =>
-                  c.isTopLevelChannel &&
-                  widget.controller.canViewChannel(guild, c) &&
-                  c.name.toLowerCase().contains(q.toLowerCase()))
+          final filtered = orderedBase
+              .where((c) => c.name.toLowerCase().contains(q.toLowerCase()))
               .toList();
           return DraggableScrollableSheet(
             expand: false,
@@ -1099,14 +1250,24 @@ class _HomeScreenState extends State<HomeScreen>
                           leading: Icon(
                             ch.isForum
                                 ? Icons.forum_outlined
-                                : Icons.tag_rounded,
+                                : (ch.isStageVoice
+                                    ? Icons.podcasts_rounded
+                                    : (ch.isVoice
+                                        ? Icons.volume_up_rounded
+                                        : (ch.type == 5
+                                            ? Icons.campaign_rounded
+                                            : Icons.tag_rounded))),
                             color: p.textMuted,
                           ),
                           title: Text(ch.name,
                               style: TextStyle(color: p.textPrimary)),
                           onTap: () {
                             Navigator.of(ctx).pop();
-                            _openChannelChat(ch.id, guildId: guild.id);
+                            if (ch.isVoice) {
+                              _openVoiceSheet(guild, ch);
+                            } else {
+                              _openChannelChat(ch.id, guildId: guild.id);
+                            }
                           },
                         );
                       },
@@ -1310,7 +1471,11 @@ class _HomeScreenState extends State<HomeScreen>
                 try {
                   final created = await widget.controller.rest!
                       .createGuildChannel(guild.id, name: name, type: type);
-                  _openChannelChat(created.id, guildId: guild.id);
+                  if (created.isVoice) {
+                    _openVoiceSheet(guild, created);
+                  } else {
+                    _openChannelChat(created.id, guildId: guild.id);
+                  }
                 } catch (_) {}
               },
               child: const Text('建立'),
@@ -1333,16 +1498,18 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     final allChannels = guild.channels;
+    final allCategoryIds =
+        allChannels.where((c) => c.isCategory).map((c) => c.id).toSet();
     final categories = allChannels.where((c) => c.isCategory).toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+      ..sort(DiscordChannel.compareCategories);
 
     final uncategorized = allChannels
         .where((c) =>
-            c.parentId == null &&
+            (c.parentId == null || !allCategoryIds.contains(c.parentId)) &&
             c.isTopLevelChannel &&
             ctrl.canViewChannel(guild, c))
         .toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
+      ..sort(DiscordChannel.compareGuildChannels);
 
     final channelWidgets = <Widget>[];
     for (final ch in uncategorized) {
@@ -1356,7 +1523,7 @@ class _HomeScreenState extends State<HomeScreen>
               c.isTopLevelChannel &&
               ctrl.canViewChannel(guild, c))
           .toList()
-        ..sort((a, b) => a.position.compareTo(b.position));
+        ..sort(DiscordChannel.compareGuildChannels);
       if (children.isEmpty) continue;
 
       final collapsed = ctrl.isCategoryCollapsed(cat.id);
@@ -1399,9 +1566,13 @@ class _HomeScreenState extends State<HomeScreen>
           channelWidgets.add(_buildChannelRow(ctrl, p, guild, ch));
         }
       } else {
-        // Discord behavior: keep unread or currently selected channels visible even when category is collapsed!
+        // Discord behavior: keep unread, selected, or active/non-empty voice channels visible even when category is collapsed!
         for (final ch in children) {
+          final hasVoiceUsers =
+              ch.isVoice && guild.voiceStatesForChannel(ch.id).isNotEmpty;
           if (ch.id == ctrl.selectedChannelId ||
+              ch.id == ctrl.activeVoiceChannelId ||
+              hasVoiceUsers ||
               ctrl.unreadChannelIds.contains(ch.id)) {
             channelWidgets.add(_buildChannelRow(ctrl, p, guild, ch));
           }
@@ -1576,16 +1747,20 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Authentic Discord Channel Row:
   /// - Left white semicircle dot STRICTLY ONLY when `unread` is true (NEVER on `selected`!)
-  /// - Selected channel has rounded `#262831` highlight background
-  /// - Read non-selected channels use muted grey text
+  /// - Voice channels open the Join Voice / Active Voice Room sheet on tap, and render
+  ///   connected voice participants directly underneath the channel row!
   Widget _buildChannelRow(
     BotClientController ctrl,
     DiscordPalette p,
     DiscordGuild guild,
     DiscordChannel ch,
   ) {
-    final selected = ctrl.selectedChannelId == ch.id;
-    final unread = !selected && ctrl.unreadChannelIds.contains(ch.id);
+    final isConnectedVoice =
+        ch.isVoice && ctrl.activeVoiceChannelId == ch.id;
+    final selected =
+        (!ch.isVoice && ctrl.selectedChannelId == ch.id) || isConnectedVoice;
+    final unread =
+        ctrl.selectedChannelId != ch.id && ctrl.unreadChannelIds.contains(ch.id);
     final isRules = guild.rulesChannelId == ch.id;
     final isLocked = ch.permissionOverwrites.any(
       (ow) =>
@@ -1593,7 +1768,12 @@ class _HomeScreenState extends State<HomeScreen>
           DiscordPermissions.has(ow.deny, DiscordPermissions.viewChannel),
     );
 
-    final iconColor = (selected || unread) ? Colors.white : p.textMuted;
+    final voiceStates =
+        ch.isVoice ? guild.voiceStatesForChannel(ch.id) : const <VoiceState>[];
+
+    final iconColor = isConnectedVoice
+        ? DiscordPalette.green
+        : ((selected || unread) ? Colors.white : p.textMuted);
 
     Widget leadingIcon;
     if (isRules) {
@@ -1603,6 +1783,8 @@ class _HomeScreenState extends State<HomeScreen>
       leadingIcon = Icon(Icons.forum_outlined, size: 20, color: iconColor);
     } else if (ch.type == 5) {
       leadingIcon = Icon(Icons.campaign_rounded, size: 21, color: iconColor);
+    } else if (ch.isStageVoice) {
+      leadingIcon = Icon(Icons.podcasts_rounded, size: 20, color: iconColor);
     } else if (ch.isVoice) {
       leadingIcon = Icon(Icons.volume_up_rounded, size: 20, color: iconColor);
     } else {
@@ -1613,7 +1795,7 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
-    return Stack(
+    final rowStack = Stack(
       alignment: Alignment.centerLeft,
       children: [
         // White semicircle unread dot ONLY when channel genuinely has unread new messages!
@@ -1630,7 +1812,13 @@ class _HomeScreenState extends State<HomeScreen>
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: () => _openChannelChat(ch.id, guildId: guild.id),
+            onTap: () {
+              if (ch.isVoice) {
+                _openVoiceSheet(guild, ch);
+              } else {
+                _openChannelChat(ch.id, guildId: guild.id);
+              }
+            },
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -1648,22 +1836,183 @@ class _HomeScreenState extends State<HomeScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: (selected || unread)
-                            ? Colors.white
-                            : p.textMuted,
+                        color: isConnectedVoice
+                            ? DiscordPalette.green
+                            : ((selected || unread)
+                                ? Colors.white
+                                : p.textMuted),
                         fontSize: 15.5,
-                        fontWeight: (selected || unread)
+                        fontWeight: (selected || unread || isConnectedVoice)
                             ? FontWeight.w600
                             : FontWeight.w500,
                       ),
                     ),
                   ),
+                  if (ch.isVoice &&
+                      (ch.userLimit > 0 || voiceStates.isNotEmpty)) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: p.elevatedBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        ch.userLimit > 0
+                            ? '${voiceStates.length.toString().padLeft(2, '0')}/${ch.userLimit.toString().padLeft(2, '0')}'
+                            : '${voiceStates.length}',
+                        style: TextStyle(
+                          color: p.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (ch.isVoice &&
+                      (voiceStates.isNotEmpty ||
+                          isConnectedVoice ||
+                          unread)) ...[
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _openChannelChat(ch.id, guildId: guild.id),
+                      child: Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 15.5,
+                          color: unread ? Colors.white : p.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ),
       ],
+    );
+
+    if (!ch.isVoice || voiceStates.isEmpty) {
+      return rowStack;
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        rowStack,
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: ValueListenableBuilder<Set<String>>(
+            valueListenable: ctrl.speakingUserIdsNotifier,
+            builder: (_, speakingIds, __) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: voiceStates
+                    .map((vs) => _buildConnectedVoiceMemberRow(
+                          ctrl: ctrl,
+                          p: p,
+                          guild: guild,
+                          channel: ch,
+                          vs: vs,
+                          isSpeaking: speakingIds.contains(vs.userId),
+                        ))
+                    .toList(growable: false),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConnectedVoiceMemberRow({
+    required BotClientController ctrl,
+    required DiscordPalette p,
+    required DiscordGuild guild,
+    required DiscordChannel channel,
+    required VoiceState vs,
+    required bool isSpeaking,
+  }) {
+    final acc = ctrl.activeAccount;
+    final isSelfBot = acc != null && vs.userId == acc.id;
+    final member = vs.member ?? guild.cachedMembers[vs.userId];
+    final name = isSelfBot
+        ? (member?.effectiveName ?? acc.displayName)
+        : (member?.effectiveName ?? 'User ${vs.userId}');
+    final avatarUrl = isSelfBot
+        ? acc.avatarUrl(size: 64)
+        : (member != null
+            ? member.user.avatarUrl(size: 64)
+            : 'https://cdn.discordapp.com/embed/avatars/${((BigInt.tryParse(vs.userId) ?? BigInt.zero) >> 22).toInt().abs() % 6}.png');
+
+    return InkWell(
+      onTap: () => _openVoiceSheet(guild, channel),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(38, 3.5, 16, 3.5),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSpeaking ? DiscordPalette.green : Colors.transparent,
+                  width: 1.8,
+                ),
+              ),
+              child: CircleAvatar(
+                radius: 10.5,
+                backgroundImage: NetworkImage(avatarUrl),
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isSpeaking ? Colors.white : p.textSecondary,
+                  fontSize: 13.5,
+                  fontWeight: isSpeaking ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+            if (vs.selfStream) ...[
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: DiscordPalette.danger,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  '直播',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+            if (vs.isMuted) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.mic_off_rounded, size: 14, color: p.textMuted),
+            ],
+            if (vs.isDeafened) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.headset_off_rounded, size: 14, color: p.textMuted),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1831,6 +2180,8 @@ class _DiscordChatPane extends StatefulWidget {
   final bool showBackButton;
   final VoidCallback onBack;
   final VoidCallback onToggleRightDrawer;
+  final void Function(DiscordGuild guild, DiscordChannel channel)
+      onOpenVoiceRoom;
   final void Function(String threadChannelId) onSelectForumPost;
   final Future<void> Function(String userId) onOpenDmFromChat;
 
@@ -1840,6 +2191,7 @@ class _DiscordChatPane extends StatefulWidget {
     required this.showBackButton,
     required this.onBack,
     required this.onToggleRightDrawer,
+    required this.onOpenVoiceRoom,
     required this.onSelectForumPost,
     required this.onOpenDmFromChat,
   });
@@ -2156,6 +2508,20 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                   ),
                 ),
               ),
+              if (channel.isVoice && guild != null)
+                IconButton(
+                  tooltip: ctrl.activeVoiceChannelId == channel.id
+                      ? '開啟語音房間'
+                      : '加入語音',
+                  icon: Icon(
+                    Icons.volume_up_rounded,
+                    color: ctrl.activeVoiceChannelId == channel.id
+                        ? DiscordPalette.green
+                        : p.textSecondary,
+                    size: 21,
+                  ),
+                  onPressed: () => widget.onOpenVoiceRoom(guild, channel),
+                ),
               IconButton(
                 icon: Icon(Icons.group_rounded,
                     color: p.textSecondary, size: 22),
