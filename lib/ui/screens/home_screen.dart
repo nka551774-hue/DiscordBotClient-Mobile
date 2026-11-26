@@ -2340,6 +2340,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
   bool _hasText = false;
   bool _showJumpBottom = false;
   String _slashPrefix = '';
+  String _emojiPrefix = '';
+  int _emojiTokenStart = -1;
+  bool _triggeredEmojiHydration = false;
 
   void _insertTextAtCursor(String chunk) {
     final text = _composerCtrl.text;
@@ -2377,10 +2380,37 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     final raw = _composerCtrl.text;
     final nonEmpty = raw.trim().isNotEmpty;
     final nextSlash = raw.startsWith('/') && !raw.contains('\n') ? raw : '';
-    if (nonEmpty != _hasText || nextSlash != _slashPrefix) {
+
+    String nextEmojiPrefix = '';
+    int nextEmojiStart = -1;
+    final sel = _composerCtrl.selection;
+    final cursor = (sel.isValid && sel.baseOffset >= 0 && sel.baseOffset <= raw.length)
+        ? sel.baseOffset
+        : raw.length;
+    final beforeCursor = raw.substring(0, cursor);
+    final shortcodeMatch =
+        RegExp(r'(?:^|\s):([a-zA-Z0-9_~-]{1,32})$').firstMatch(beforeCursor);
+    if (shortcodeMatch != null) {
+      nextEmojiPrefix = shortcodeMatch.group(1)!;
+      nextEmojiStart = cursor - nextEmojiPrefix.length - 1; // points to ':'
+      if (!_triggeredEmojiHydration) {
+        _triggeredEmojiHydration = true;
+        widget.controller.loadApplicationEmojis();
+        widget.controller.ensureAllGuildEmojisLoaded(
+          priorityGuildId: widget.controller.selectedGuildId,
+        );
+      }
+    }
+
+    if (nonEmpty != _hasText ||
+        nextSlash != _slashPrefix ||
+        nextEmojiPrefix != _emojiPrefix ||
+        nextEmojiStart != _emojiTokenStart) {
       setState(() {
         _hasText = nonEmpty;
         _slashPrefix = nextSlash;
+        _emojiPrefix = nextEmojiPrefix;
+        _emojiTokenStart = nextEmojiStart;
       });
     }
   }
@@ -2572,6 +2602,77 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               _composerCtrl.text = m.$1;
               _composerCtrl.selection = TextSelection.fromPosition(
                 TextPosition(offset: _composerCtrl.text.length),
+              );
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildEmojiAutocompleteBar(DiscordPalette p) {
+    if (_emojiPrefix.isEmpty || _emojiTokenStart < 0) {
+      return const SizedBox.shrink();
+    }
+    final ctrl = widget.controller;
+    final matches = ctrl.searchAllCustomEmojis(
+      _emojiPrefix,
+      preferGuildId: ctrl.selectedGuildId,
+      limit: 6,
+    );
+    if (matches.isEmpty) return const SizedBox.shrink();
+
+    final allowAnim = !ctrl.ecoSettings.ecoPowerSaving ||
+        ctrl.vencord.isPluginEnabled('AlwaysAnimate');
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      decoration: BoxDecoration(
+        color: p.sidebarBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: matches.map((pair) {
+          final (em, g) = pair;
+          final url = em.imageUrl(size: 48, allowAnimated: allowAnim);
+          return ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            leading: url != null
+                ? Image.network(url, width: 24, height: 24, cacheWidth: 48)
+                : const Icon(Icons.emoji_emotions_outlined, size: 22),
+            title: Text(
+              ':${em.name}:',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: p.textPrimary,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            trailing: Text(
+              g?.name ?? 'Application Emoji',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: p.textMuted, fontSize: 11.5),
+            ),
+            onTap: () {
+              final raw = _composerCtrl.text;
+              final sel = _composerCtrl.selection;
+              final end = (sel.isValid &&
+                      sel.baseOffset >= _emojiTokenStart &&
+                      sel.baseOffset <= raw.length)
+                  ? sel.baseOffset
+                  : raw.length;
+              final replacement = '${em.markdown} ';
+              final next = raw.replaceRange(_emojiTokenStart, end, replacement);
+              _composerCtrl.value = TextEditingValue(
+                text: next,
+                selection: TextSelection.collapsed(
+                    offset: _emojiTokenStart + replacement.length),
               );
             },
           );
@@ -3037,7 +3138,18 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                   onToggleReaction: (m, emoji, me) async {
                                     try {
                                       await ctrl.toggleReaction(m, emoji, me);
-                                    } catch (_) {}
+                                    } catch (e) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text('無法切換表情反應：$e'),
+                                            duration:
+                                                const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    }
                                   },
                                   onOpenDm: widget.onOpenDmFromChat,
                                   onOpenUserProfile: (u, {member}) =>
@@ -3124,8 +3236,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
           },
         ),
 
-        // Built-in Slash Command Autocomplete Bar
+        // Built-in Slash Command & :shortcode Emoji Autocomplete Bars
         _buildSlashAutocompleteBar(p),
+        _buildEmojiAutocompleteBar(p),
 
         // Replying / Editing / Attachment Bar
         if (_replyTarget != null ||
@@ -3309,9 +3422,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                               guild: guild,
                               onSelectEmoji: (em) {
                                 if (em.id != null && em.id!.isNotEmpty) {
-                                  final prefix = em.animated ? '<a:' : '<:';
-                                  _insertTextAtCursor(
-                                      '$prefix${em.name}:${em.id}> ');
+                                  _insertTextAtCursor('${em.markdown} ');
                                 } else {
                                   _insertTextAtCursor(em.name);
                                 }

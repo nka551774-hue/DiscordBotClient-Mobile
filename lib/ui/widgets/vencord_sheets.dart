@@ -1462,7 +1462,7 @@ void showWhoReactedSheet(
 }
 
 // ============================================================================
-// 6. Unified Emoji Picker with Application Emojis (`VencordDBCPlugin`)
+// 6. Unified Multi-Server & Application Emoji Picker (`VencordDBCPlugin`)
 // ============================================================================
 void showDiscordEmojiPickerSheet(
   BuildContext context, {
@@ -1470,154 +1470,496 @@ void showDiscordEmojiPickerSheet(
   required DiscordPalette palette,
   required DiscordGuild? guild,
   required void Function(DiscordEmoji emoji) onSelectEmoji,
+  bool forReaction = false,
 }) {
-  controller.loadApplicationEmojis();
-  const commonUnicode = [
-    '😀', '😂', '🥹', '😍', '🤔', '😎', '😭', '😡', '👍', '👎',
-    '❤️', '🔥', '🎉', '✨', '💯', '👀', '🙏', '✅', '❌', '🚀',
-  ];
-
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (ctx) => ListenableBuilder(
-      listenable: controller,
-      builder: (ctx, _) {
-        final appEmojis = controller.applicationEmojis;
-        final guildEmojis = guild?.emojis ?? const <DiscordEmoji>[];
-        final allowAnim = !controller.ecoSettings.ecoPowerSaving ||
-            controller.vencord.isPluginEnabled('AlwaysAnimate');
-        final botAcc = controller.activeAccount;
+    builder: (_) => _DiscordEmojiPickerSheet(
+      controller: controller,
+      palette: palette,
+      currentGuild: guild,
+      onSelectEmoji: onSelectEmoji,
+      forReaction: forReaction,
+    ),
+  );
+}
+
+class _DiscordEmojiPickerSheet extends StatefulWidget {
+  final BotClientController controller;
+  final DiscordPalette palette;
+  final DiscordGuild? currentGuild;
+  final void Function(DiscordEmoji emoji) onSelectEmoji;
+  final bool forReaction;
+
+  const _DiscordEmojiPickerSheet({
+    required this.controller,
+    required this.palette,
+    required this.currentGuild,
+    required this.onSelectEmoji,
+    required this.forReaction,
+  });
+
+  @override
+  State<_DiscordEmojiPickerSheet> createState() =>
+      _DiscordEmojiPickerSheetState();
+}
+
+class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  String? _selectedCategoryKey; // null = All, 'app' = App Emojis, 'unicode' = Unicode, or guildId
+
+  static const _commonUnicode = [
+    '😀', '😂', '🥹', '😍', '🤔', '😎', '😭', '😡', '🥳', '🫡',
+    '👍', '👎', '❤️', '🔥', '🎉', '✨', '💯', '👀', '🙏', '✅',
+    '❌', '🚀', '💀', '🤡', '🥺', '🤝', '🫶', '⚡', '⭐', '💬',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.loadApplicationEmojis();
+    widget.controller.ensureAllGuildEmojisLoaded(
+      priorityGuildId: widget.currentGuild?.id,
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  bool _canSelectEmoji(DiscordEmoji em) {
+    if (!widget.forReaction) return true;
+    if (em.id == null || em.id!.isEmpty) return true;
+    return widget.controller.canUseCustomEmojiNatively(
+      em,
+      currentGuild: widget.currentGuild,
+    );
+  }
+
+  Widget _buildEmojiGrid(
+    BuildContext context,
+    List<DiscordEmoji> emojis,
+    bool allowAnim,
+  ) {
+    final p = widget.palette;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: emojis.map((em) {
+        final usable = _canSelectEmoji(em);
+        final url = em.imageUrl(size: 48, allowAnimated: allowAnim);
+        return InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            if (!usable) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('此表情未啟用或目前頻道禁止使用外部伺服器表情反應'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).pop();
+            widget.onSelectEmoji(em);
+          },
+          child: Tooltip(
+            message: ':${em.name}:',
+            child: Opacity(
+              opacity: usable ? 1.0 : 0.38,
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (url != null)
+                      Image.network(
+                        url,
+                        width: 32,
+                        height: 32,
+                        cacheWidth: 64,
+                        errorBuilder: (_, __, ___) => Text(
+                          ':${em.name}:',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: p.textMuted, fontSize: 10),
+                        ),
+                      )
+                    else
+                      Text(em.name, style: const TextStyle(fontSize: 24)),
+                    if (!usable)
+                      Positioned(
+                        right: -3,
+                        bottom: -3,
+                        child: Container(
+                          padding: const EdgeInsets.all(1.5),
+                          decoration: BoxDecoration(
+                            color: p.profileBg,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.lock_rounded,
+                            size: 10,
+                            color: p.textMuted,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = widget.controller;
+    final p = widget.palette;
+    final q = _query.trim().toLowerCase();
+
+    return ListenableBuilder(
+      listenable: ctrl,
+      builder: (context, _) {
+        final allowAnim = !ctrl.ecoSettings.ecoPowerSaving ||
+            ctrl.vencord.isPluginEnabled('AlwaysAnimate');
+        final botAcc = ctrl.activeAccount;
+
+        final appEmojis = ctrl.applicationEmojis
+            .where((e) => q.isEmpty || e.name.toLowerCase().contains(q))
+            .toList();
+
+        // Order guilds: currentGuild first, then all other guilds in rail order
+        final orderedGuilds = <DiscordGuild>[];
+        if (widget.currentGuild != null) {
+          final freshCur =
+              ctrl.findGuildById(widget.currentGuild!.id) ?? widget.currentGuild!;
+          orderedGuilds.add(freshCur);
+        }
+        for (final g in ctrl.guilds) {
+          if (g.id != widget.currentGuild?.id) {
+            orderedGuilds.add(g);
+          }
+        }
+
+        final guildSections = <(DiscordGuild guild, List<DiscordEmoji> emojis)>[];
+        for (final g in orderedGuilds) {
+          final filtered = g.emojis
+              .where((e) => q.isEmpty || e.name.toLowerCase().contains(q))
+              .toList();
+          if (filtered.isNotEmpty) {
+            guildSections.add((g, filtered));
+          }
+        }
+
+        final anyLoading = orderedGuilds.any((g) => !g.emojisLoaded);
 
         return DraggableScrollableSheet(
           expand: false,
-          initialChildSize: 0.62,
-          maxChildSize: 0.90,
-          builder: (_, sCtrl) => ListView(
-            controller: sCtrl,
-            padding: const EdgeInsets.all(16),
+          initialChildSize: 0.68,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
+          builder: (_, sCtrl) => Column(
             children: [
-              // 1. Application Emojis Section (`VencordDBCPlugin/utils/application-emojis.ts`)
-              if (appEmojis.isNotEmpty) ...[
-                Row(
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: p.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Search Bar
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (v) => setState(() => _query = v),
+                  style: TextStyle(color: p.textPrimary, fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: '搜尋所有伺服器與應用程式表情...',
+                    hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
+                    prefixIcon:
+                        Icon(Icons.search_rounded, size: 19, color: p.textMuted),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.close_rounded,
+                                size: 18, color: p.textMuted),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _query = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: p.elevatedBg,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Horizontal Server / Category Filter Strip
+              SizedBox(
+                height: 40,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
-                    if (botAcc != null) ...[
-                      CircleAvatar(
-                        radius: 10,
-                        backgroundImage:
-                            NetworkImage(botAcc.avatarUrl(size: 32)),
+                    _categoryPill(
+                      p: p,
+                      keyId: null,
+                      child: const Text('全部',
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                    if (ctrl.applicationEmojis.isNotEmpty)
+                      _categoryPill(
+                        p: p,
+                        keyId: 'app',
+                        tooltip: 'Application Emojis',
+                        child: botAcc != null
+                            ? CircleAvatar(
+                                radius: 12,
+                                backgroundImage:
+                                    NetworkImage(botAcc.avatarUrl(size: 64)),
+                              )
+                            : const Icon(Icons.smart_toy_outlined, size: 17),
                       ),
-                      const SizedBox(width: 7),
-                    ],
-                    Text(
-                      'Application Emojis (${appEmojis.length})',
-                      style: TextStyle(
-                        color: palette.textSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    ...orderedGuilds
+                        .where((g) => g.emojis.isNotEmpty)
+                        .map((g) {
+                      final icon = g.iconUrl(size: 64);
+                      return _categoryPill(
+                        p: p,
+                        keyId: g.id,
+                        tooltip: g.name,
+                        child: icon != null
+                            ? ClipOval(
+                                child: Image.network(
+                                  icon,
+                                  width: 24,
+                                  height: 24,
+                                  cacheWidth: 48,
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : Text(
+                                g.initials,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                      );
+                    }),
+                    _categoryPill(
+                      p: p,
+                      keyId: 'unicode',
+                      tooltip: '常用表情',
+                      child: const Icon(Icons.emoji_emotions_outlined, size: 18),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: appEmojis.map((ae) {
-                    final url = ae.imageUrl(size: 48, allowAnimated: allowAnim);
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        onSelectEmoji(ae);
-                      },
-                      child: Tooltip(
-                        message: ':${ae.name}:',
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: url != null
-                              ? Image.network(url,
-                                  width: 30, height: 30, cacheWidth: 60)
-                              : Text(':${ae.name}:'),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 18),
-              ],
-
-              // 2. Guild Custom Emojis
-              if (guildEmojis.isNotEmpty) ...[
-                Text(
-                  '伺服器自訂表情 (${guildEmojis.length})',
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: guildEmojis.map((ge) {
-                    final url = ge.imageUrl(size: 48, allowAnimated: allowAnim);
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        onSelectEmoji(ge);
-                      },
-                      child: Tooltip(
-                        message: ':${ge.name}:',
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: url != null
-                              ? Image.network(url,
-                                  width: 30, height: 30, cacheWidth: 60)
-                              : Text(':${ge.name}:'),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 18),
-              ],
-
-              // 3. Standard Unicode Emojis
-              Text(
-                '常用表情',
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
               ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: commonUnicode.map((em) {
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      onSelectEmoji(DiscordEmoji(name: em));
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Text(em, style: const TextStyle(fontSize: 25)),
-                    ),
-                  );
-                }).toList(),
+              const SizedBox(height: 6),
+              Divider(height: 1, color: p.border),
+
+              // Scrollable Emoji Sections
+              Expanded(
+                child: ListView(
+                  controller: sCtrl,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  children: [
+                    if (anyLoading && guildSections.isEmpty && appEmojis.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              '正在同步各伺服器自訂表情...',
+                              style:
+                                  TextStyle(color: p.textMuted, fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // 1. Application Emojis Section
+                    if ((_selectedCategoryKey == null ||
+                            _selectedCategoryKey == 'app') &&
+                        appEmojis.isNotEmpty) ...[
+                      _sectionHeader(
+                        p: p,
+                        iconUrl: botAcc?.avatarUrl(size: 64),
+                        fallbackText: 'APP',
+                        title: 'Application Emojis (${appEmojis.length})',
+                      ),
+                      const SizedBox(height: 8),
+                      _buildEmojiGrid(context, appEmojis, allowAnim),
+                      const SizedBox(height: 18),
+                    ],
+
+                    // 2. All Servers' Custom Emojis (Current Server first, then all other servers!)
+                    for (final (g, gEmojis) in guildSections)
+                      if (_selectedCategoryKey == null ||
+                          _selectedCategoryKey == g.id) ...[
+                        _sectionHeader(
+                          p: p,
+                          iconUrl: g.iconUrl(size: 64),
+                          fallbackText: g.initials,
+                          title: g.id == widget.currentGuild?.id
+                              ? '${g.name} • 當前伺服器 (${gEmojis.length})'
+                              : '${g.name} (${gEmojis.length})',
+                        ),
+                        const SizedBox(height: 8),
+                        _buildEmojiGrid(context, gEmojis, allowAnim),
+                        const SizedBox(height: 18),
+                      ],
+
+                    // 3. Standard Unicode Emojis
+                    if ((_selectedCategoryKey == null ||
+                            _selectedCategoryKey == 'unicode') &&
+                        q.isEmpty) ...[
+                      Text(
+                        '常用表情',
+                        style: TextStyle(
+                          color: p.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildEmojiGrid(
+                        context,
+                        _commonUnicode
+                            .map((u) => DiscordEmoji(name: u))
+                            .toList(),
+                        allowAnim,
+                      ),
+                    ],
+
+                    if (q.isNotEmpty &&
+                        appEmojis.isEmpty &&
+                        guildSections.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        child: Center(
+                          child: Text(
+                            '找不到符合「$_query」的伺服器或應用程式表情',
+                            style: TextStyle(color: p.textMuted, fontSize: 13.5),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
         );
       },
-    ),
-  );
+    );
+  }
+
+  Widget _categoryPill({
+    required DiscordPalette p,
+    required String? keyId,
+    required Widget child,
+    String? tooltip,
+  }) {
+    final selected = _selectedCategoryKey == keyId;
+    final pill = GestureDetector(
+      onTap: () => setState(() => _selectedCategoryKey = keyId),
+      child: Container(
+        margin: const EdgeInsets.only(right: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? p.brandColor.withAlpha(75) : p.sidebarBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? p.brandColor : p.border,
+            width: 0.9,
+          ),
+        ),
+        child: child,
+      ),
+    );
+    return tooltip != null ? Tooltip(message: tooltip, child: pill) : pill;
+  }
+
+  Widget _sectionHeader({
+    required DiscordPalette p,
+    required String? iconUrl,
+    required String fallbackText,
+    required String title,
+  }) {
+    return Row(
+      children: [
+        if (iconUrl != null)
+          ClipOval(
+            child: Image.network(
+              iconUrl,
+              width: 20,
+              height: 20,
+              cacheWidth: 40,
+              fit: BoxFit.cover,
+            ),
+          )
+        else
+          Container(
+            width: 20,
+            height: 20,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: p.elevatedBg,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              fallbackText,
+              style: TextStyle(
+                color: p.textSecondary,
+                fontSize: 8.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: p.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ============================================================================

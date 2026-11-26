@@ -21,8 +21,9 @@
 - **真實帳號與伺服器屬性渲染**：自動依據機器人真實 `public_flags` 與 `application.flags` 渲染官方徽章與 `APP` / 已驗證標記，並依據伺服器真實 `features` 判斷是否為社群或驗證伺服器，不混入任何假裝飾。
 
 ### Vencord 插件與主題完整相容 (`設定 -> Vencord`)
-- **內建 18 款官方 Vencord 插件與 `VencordDBCPlugin` (`BotClient`)**：
-  - **`BotClient` (核心必備)**：完整移植 `VencordDBCPlugin` 所有設定與功能，包含機器人專屬 **Application Emojis** (`/applications/{id}/emojis` 5 分鐘快取表情選擇器與反應面板)、**Advanced Message Editor**（支援 Discord Components V2 `IS_COMPONENTS_V2 = 32768` 與 Discohook / Raw JSON 結構發送及編輯）、成員列表開關與更新節流、私訊快取開關，以及 `/ping`、`/purge <2-100>`、`/switch shard <id>`、`/switch guild <id>`、`/override bitrate <6-5000>` 指令。
+- **內建 19 款官方 Vencord 插件與 `VencordDBCPlugin` (`BotClient`)**：
+  - **`BotClient` (核心必備) 與全伺服器表情支援**：完整移植 `VencordDBCPlugin` 所有設定與功能，包含全伺服器自訂表情選擇器（整合 `GET /guilds/{id}/emojis` 跨服同步、伺服器分組跳轉列、關鍵字搜尋，於伺服器頻道與私人訊息皆可使用所有伺服器表情）、聊天輸入框 `:表情名稱` 即時自動補全與自動轉換、機器人專屬 **Application Emojis** (`/applications/{id}/emojis` 5 分鐘快取)、**Advanced Message Editor**（支援 Discord Components V2 `IS_COMPONENTS_V2 = 32768` 與 Discohook / Raw JSON 結構發送及編輯），以及 `/ping`、`/purge <2-100>`、`/switch shard <id>`、`/switch guild <id>`、`/override bitrate <6-5000>` 指令。
+  - **`FakeNitro`**：當目標頻道關閉 `Use External Emojis` 權限或表情所屬伺服器失去加成時，自動改以高畫質 CDN 超連結發送表情，並於聊天室內自動還原渲染為行內或放大表情圖示。
   - **`MessageLogger`**：即時記錄頻道內遭刪除的訊息（支援紅字或紅色背景覆蓋樣式）與編輯前後的完整歷史紀錄。
   - **`ShowHiddenChannels`**：於頻道列表顯示機器人無檢視權限的隱藏頻道，點擊可檢視頻道主題、建立日期與允許檢視的身分組清單。
   - **`NoReplyMention` & `SilentMessageToggle` & `SilentTyping`**：支援回覆訊息時預設關閉 `@提及`（附帶使用者 ID 例外清單與回覆列即時切換膠囊）、聊天輸入列 `@silent` 無聲訊息開關，以及隱藏輸入中狀態。

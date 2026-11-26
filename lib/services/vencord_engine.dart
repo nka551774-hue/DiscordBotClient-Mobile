@@ -309,6 +309,45 @@ const List<VencordPluginDef> kBuiltInVencordPlugins = [
     ],
   ),
   VencordPluginDef(
+    name: 'FakeNitro',
+    description:
+        'Allows sending cross-server, animated, or unboosted guild emojis even in channels that disallow external emojis, and renders FakeNitro emoji links inline.',
+    authors: ['Arjix', 'D3SOX', 'Ven', 'Nuckyz'],
+    tags: ['Emotes', 'Chat', 'Appearance'],
+    enabledByDefault: true,
+    settings: [
+      VencordSettingDef(
+        key: 'enableEmojiBypass',
+        description:
+            'Automatically send CDN emoji hyperlinks when channel lacks Use External Emojis permission or emoji is unavailable',
+        type: VencordOptionType.boolean,
+        defaultValue: true,
+      ),
+      VencordSettingDef(
+        key: 'emojiSize',
+        description: 'Size of FakeNitro emojis when bypassed',
+        type: VencordOptionType.select,
+        options: [
+          VencordSelectOption(label: '48px', value: 48, isDefault: true),
+          VencordSelectOption(label: '64px', value: 64),
+          VencordSelectOption(label: '96px', value: 96),
+        ],
+      ),
+      VencordSettingDef(
+        key: 'useHyperLinks',
+        description: 'Use [name](url) markdown hyperlinks when bypassing emojis',
+        type: VencordOptionType.boolean,
+        defaultValue: true,
+      ),
+      VencordSettingDef(
+        key: 'transformEmojis',
+        description: 'Render FakeNitro emoji links in chat as inline emojis',
+        type: VencordOptionType.boolean,
+        defaultValue: true,
+      ),
+    ],
+  ),
+  VencordPluginDef(
     name: 'MessageLogger',
     description:
         'Temporarily logs deleted and edited messages so they remain visible in chat.',

@@ -93,9 +93,12 @@ class _MessageTileState extends State<MessageTile> {
       controller: widget.controller,
       palette: widget.palette,
       guild: widget.guild,
+      forReaction: true,
       onSelectEmoji: (em) {
         final existing = widget.message.reactions.where(
-          (r) => r.emoji.apiIdentifier == em.apiIdentifier,
+          (r) => (em.id != null && em.id!.isNotEmpty)
+              ? r.emoji.id == em.id
+              : (r.emoji.id == null && r.emoji.name == em.name),
         );
         widget.onToggleReaction(
           widget.message,
@@ -416,6 +419,8 @@ class _MessageTileState extends State<MessageTile> {
 
     final revealSpoilers = vc.isPluginEnabled('RevealAllSpoilers');
     final alwaysAnim = vc.isPluginEnabled('AlwaysAnimate');
+    final transformFakeNitro = vc.isPluginEnabled('FakeNitro') &&
+        vc.getSetting<bool>('FakeNitro', 'transformEmojis', true);
     final roleColorMentions = vc.isPluginEnabled('RoleColorEverywhere') &&
         vc.getSetting<bool>('RoleColorEverywhere', 'chatMentions', true);
     final logEnabled = vc.isPluginEnabled('MessageLogger');
@@ -803,6 +808,8 @@ class _MessageTileState extends State<MessageTile> {
                                         revealAllSpoilers: revealSpoilers,
                                         alwaysAnimate: alwaysAnim,
                                         roleColorMentions: roleColorMentions,
+                                        transformFakeNitroEmojis:
+                                            transformFakeNitro,
                                         overrideTextColor:
                                             (message.isDeleted && !deleteOverlay)
                                                 ? DiscordPalette.danger
@@ -880,11 +887,28 @@ class _MessageTileState extends State<MessageTile> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: message.embeds
+                                            .where((emb) {
+                                              if (!transformFakeNitro) {
+                                                return true;
+                                              }
+                                              final imgUrl = emb.imageUrl ??
+                                                  emb.thumbnailUrl ??
+                                                  emb.url;
+                                              final isBareEmojiEmbed = emb
+                                                          .title ==
+                                                      null &&
+                                                  emb.description == null &&
+                                                  imgUrl != null &&
+                                                  RegExp(r'/emojis/\d+\.(?:webp|png|gif)')
+                                                      .hasMatch(imgUrl);
+                                              return !isBareEmojiEmbed;
+                                            })
                                             .map((emb) => _EmbedCard(
                                                   embed: emb,
                                                   palette: palette,
                                                   guild: widget.guild,
                                                   ecoMode: widget.ecoMode,
+                                                  alwaysAnimate: alwaysAnim,
                                                 ))
                                             .toList(),
                                       ),
@@ -1164,12 +1188,14 @@ class _EmbedCard extends StatelessWidget {
   final DiscordPalette palette;
   final DiscordGuild? guild;
   final bool ecoMode;
+  final bool alwaysAnimate;
 
   const _EmbedCard({
     required this.embed,
     required this.palette,
     this.guild,
     required this.ecoMode,
+    this.alwaysAnimate = false,
   });
 
   @override
@@ -1264,6 +1290,7 @@ class _EmbedCard extends StatelessWidget {
                         palette: palette,
                         guild: guild,
                         ecoMode: ecoMode,
+                        alwaysAnimate: alwaysAnimate,
                         fontSize: 13.5,
                       ),
                   ],

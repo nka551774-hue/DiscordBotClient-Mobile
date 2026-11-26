@@ -616,6 +616,7 @@ class DiscordPermissions {
   static final BigInt embedLinks = BigInt.one << 14;
   static final BigInt attachFiles = BigInt.one << 15;
   static final BigInt readMessageHistory = BigInt.one << 16;
+  static final BigInt useExternalEmojis = BigInt.one << 18;
   static final BigInt manageWebhooks = BigInt.one << 29;
   static final BigInt sendMessagesInThreads = BigInt.one << 38;
   static final BigInt useSoundboard = BigInt.one << 42;
@@ -920,15 +921,34 @@ class DiscordEmoji {
   final String? id;
   final String name;
   final bool animated;
+  final String? guildId;
+  final bool available;
+  final List<String> roleIds;
+  final bool isApplicationEmoji;
 
   const DiscordEmoji({
     this.id,
     required this.name,
     this.animated = false,
+    this.guildId,
+    this.available = true,
+    this.roleIds = const [],
+    this.isApplicationEmoji = false,
   });
 
+  String get cleanName {
+    final cleaned = name.replaceAll(':', '').trim();
+    return cleaned.isEmpty ? 'emoji' : cleaned;
+  }
+
+  /// Discord REST reaction identifier: `name:id` for both static & animated custom emojis.
   String get apiIdentifier =>
-      (id != null && id!.isNotEmpty) ? '$name:$id' : name;
+      (id != null && id!.isNotEmpty) ? '$cleanName:$id' : name;
+
+  /// Discord chat markdown tag: `<:name:id>` or `<a:name:id>`.
+  String get markdown => (id != null && id!.isNotEmpty)
+      ? '<${animated ? 'a' : ''}:$cleanName:$id>'
+      : name;
 
   String? imageUrl({int size = 48, bool allowAnimated = false}) {
     if (id == null || id!.isEmpty) return null;
@@ -936,11 +956,20 @@ class DiscordEmoji {
     return 'https://cdn.discordapp.com/emojis/$id.$ext?size=$size';
   }
 
-  factory DiscordEmoji.fromJson(Map<String, dynamic> json) {
+  factory DiscordEmoji.fromJson(
+    Map<String, dynamic> json, {
+    String? guildId,
+    bool isApplicationEmoji = false,
+  }) {
+    final rawRoles = json['roles'] as List<dynamic>? ?? const [];
     return DiscordEmoji(
       id: json['id']?.toString(),
       name: json['name'] as String? ?? '❓',
       animated: json['animated'] as bool? ?? false,
+      guildId: json['guild_id']?.toString() ?? guildId,
+      available: json['available'] as bool? ?? true,
+      roleIds: rawRoles.map((e) => e.toString()).toList(),
+      isApplicationEmoji: isApplicationEmoji,
     );
   }
 }
@@ -999,6 +1028,7 @@ class DiscordGuild {
   final Map<String, VoiceState> voiceStates;
   final List<String> botRoleIds;
   final bool channelsLoaded;
+  final bool emojisLoaded;
 
   const DiscordGuild({
     required this.id,
@@ -1017,6 +1047,7 @@ class DiscordGuild {
     this.voiceStates = const {},
     this.botRoleIds = const [],
     this.channelsLoaded = false,
+    this.emojisLoaded = false,
   });
 
   List<VoiceState> voiceStatesForChannel(String channelId) {
@@ -1061,6 +1092,7 @@ class DiscordGuild {
     Map<String, VoiceState>? voiceStates,
     List<String>? botRoleIds,
     bool? channelsLoaded,
+    bool? emojisLoaded,
   }) {
     return DiscordGuild(
       id: id,
@@ -1079,6 +1111,7 @@ class DiscordGuild {
       voiceStates: voiceStates ?? this.voiceStates,
       botRoleIds: botRoleIds ?? this.botRoleIds,
       channelsLoaded: channelsLoaded ?? this.channelsLoaded,
+      emojisLoaded: emojisLoaded ?? this.emojisLoaded,
     );
   }
 
@@ -1114,10 +1147,12 @@ class DiscordGuild {
       }
     }
 
+    final hasEmojisField = json['emojis'] is List<dynamic>;
     final emojisRaw = json['emojis'] as List<dynamic>? ?? const [];
     final parsedEmojis = emojisRaw
         .whereType<Map<String, dynamic>>()
-        .map(DiscordEmoji.fromJson)
+        .map((e) => DiscordEmoji.fromJson(e, guildId: guildId))
+        .where((e) => e.id != null && e.id!.isNotEmpty)
         .toList();
 
     final featuresRaw = json['features'] as List<dynamic>? ?? const [];
@@ -1179,6 +1214,7 @@ class DiscordGuild {
       voiceStates: voiceStatesMap,
       botRoleIds: botRoles,
       channelsLoaded: channelsRaw != null,
+      emojisLoaded: hasEmojisField,
     );
   }
 }

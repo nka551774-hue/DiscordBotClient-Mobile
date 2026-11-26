@@ -49,9 +49,10 @@ class DiscordRestClient {
     String? auditReason,
     int retries = 2,
   }) async {
-    final uri = Uri.parse('$_baseUrl$path').replace(
-      queryParameters: (query != null && query.isNotEmpty) ? query : null,
-    );
+    final queryPart = (query != null && query.isNotEmpty)
+        ? '?${Uri(queryParameters: query).query}'
+        : '';
+    final uri = Uri.parse('$_baseUrl$path$queryPart');
 
     final req = http.Request(method, uri);
     req.headers.addAll(_headers(
@@ -409,6 +410,18 @@ class DiscordRestClient {
         .toList();
   }
 
+  /// Fetches custom emojis for a specific Guild (`GET /guilds/{guildId}/emojis`).
+  Future<List<DiscordEmoji>> getGuildEmojis(String guildId) async {
+    final gid = guildId.trim();
+    final res = await _request('GET', '/guilds/$gid/emojis');
+    final list = res is List<dynamic> ? res : const <dynamic>[];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((e) => DiscordEmoji.fromJson(e, guildId: gid))
+        .where((e) => e.id != null && e.id!.isNotEmpty)
+        .toList();
+  }
+
   /// Fetches Application Emojis owned by the bot (`GET /applications/{appId}/emojis`,
   /// matching `DiscordBotClient/src/AppCore/routes/users/@me/emojis.ts`).
   Future<List<DiscordEmoji>> getApplicationEmojis(String applicationId) async {
@@ -421,7 +434,7 @@ class DiscordRestClient {
         : (res is List<dynamic> ? res : const <dynamic>[]);
     return items
         .whereType<Map<String, dynamic>>()
-        .map(DiscordEmoji.fromJson)
+        .map((e) => DiscordEmoji.fromJson(e, isApplicationEmoji: true))
         .where((e) => e.id != null && e.id!.isNotEmpty)
         .toList();
   }

@@ -62,6 +62,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   List<SoundboardSound>? _cachedDefaultSounds;
   final Set<String> _loadedSoundboardGuildIds = <String>{};
+  final Set<String> _fetchingEmojiGuildIds = <String>{};
 
   final ValueNotifier<int?> voicePingMsNotifier = ValueNotifier<int?>(null);
   final ValueNotifier<Set<String>> speakingUserIdsNotifier =
@@ -449,6 +450,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _pendingVoiceEndpoint = null;
     _cachedDefaultSounds = null;
     _loadedSoundboardGuildIds.clear();
+    _fetchingEmojiGuildIds.clear();
     _applicationEmojis = const [];
     _applicationEmojisExpires = DateTime.fromMillisecondsSinceEpoch(0);
     _pendingAppEmojisFuture = null;
@@ -613,6 +615,218 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     return fut;
   }
 
+  /// Ensures custom emojis (`GET /guilds/{id}/emojis`) are hydrated across all guilds
+  /// (especially guilds initially fetched via `/users/@me/guilds` before `GUILD_CREATE`
+  /// or across multiple shards).
+  Future<void> ensureAllGuildEmojisLoaded({String? priorityGuildId}) async {
+    if (_rest == null) return;
+
+    Future<void> fetchForGuild(String gid) async {
+      final g = _guilds[gid];
+      if (g == null || g.emojisLoaded || _fetchingEmojiGuildIds.contains(gid)) {
+        return;
+      }
+      _fetchingEmojiGuildIds.add(gid);
+      try {
+        final fetched = await _rest!.getGuildEmojis(gid);
+        final cur = _guilds[gid];
+        if (cur != null) {
+          _guilds[gid] = cur.copyWith(
+            emojis: fetched,
+            emojisLoaded: true,
+          );
+          _scheduleCoalescedNotify();
+        }
+      } catch (_) {
+        final cur = _guilds[gid];
+        if (cur != null) {
+          _guilds[gid] = cur.copyWith(emojisLoaded: true);
+        }
+      } finally {
+        _fetchingEmojiGuildIds.remove(gid);
+      }
+    }
+
+    if (priorityGuildId != null) {
+      await fetchForGuild(priorityGuildId);
+    }
+
+    final pendingIds = _guilds.values
+        .where((g) => !g.emojisLoaded && !_fetchingEmojiGuildIds.contains(g.id))
+        .map((g) => g.id)
+        .toList();
+    for (int i = 0; i < pendingIds.length; i += 4) {
+      if (_rest == null) break;
+      final batch = pendingIds.skip(i).take(4);
+      await Future.wait(batch.map(fetchForGuild));
+    }
+  }
+
+  DiscordEmoji? findCustomEmojiById(String emojiId) {
+    for (final ae in _applicationEmojis) {
+      if (ae.id == emojiId) return ae;
+    }
+    for (final g in _guilds.values) {
+      for (final ge in g.emojis) {
+        if (ge.id == emojiId) return ge;
+      }
+    }
+    return null;
+  }
+
+  /// Searches custom emojis across Current Guild -> Application Emojis -> All Other Guilds.
+  List<(DiscordEmoji emoji, DiscordGuild? guild)> searchAllCustomEmojis(
+    String query, {
+    String? preferGuildId,
+    int limit = 40,
+  }) {
+    final q = query.trim().toLowerCase();
+    final results = <(DiscordEmoji, DiscordGuild?)>[];
+    final seenIds = <String>{};
+
+    void collectFrom(Iterable<DiscordEmoji> list, DiscordGuild? g) {
+      for (final em in list) {
+        if (em.id == null || em.id!.isEmpty || seenIds.contains(em.id)) {
+          continue;
+        }
+        if (q.isEmpty || em.name.toLowerCase().contains(q)) {
+          seenIds.add(em.id!);
+          results.add((em, g));
+          if (results.length >= limit) return;
+        }
+      }
+    }
+
+    final prefGuild = preferGuildId != null ? _guilds[preferGuildId] : null;
+    if (prefGuild != null) {
+      collectFrom(prefGuild.emojis, prefGuild);
+      if (results.length >= limit) return results;
+    }
+    collectFrom(_applicationEmojis, null);
+    if (results.length >= limit) return results;
+
+    for (final g in _guilds.values) {
+      if (g.id == preferGuildId) continue;
+      collectFrom(g.emojis, g);
+      if (results.length >= limit) return results;
+    }
+    return results;
+  }
+
+  /// Checks whether the Bot can natively send `<:name:id>` in the target channel
+  /// without Discord stripping it due to `USE_EXTERNAL_EMOJIS`, boost unavailability, or role locks.
+  bool canUseCustomEmojiNatively(
+    DiscordEmoji emoji, {
+    DiscordChannel? channel,
+    DiscordGuild? currentGuild,
+  }) {
+    if (emoji.id == null || emoji.id!.isEmpty) return true;
+    if (!emoji.available) return false;
+    if (emoji.isApplicationEmoji) return true;
+
+    if (emoji.roleIds.isNotEmpty && emoji.guildId != null) {
+      final origin = _guilds[emoji.guildId!];
+      if (origin != null &&
+          origin.botRoleIds.isNotEmpty &&
+          !emoji.roleIds.any(origin.botRoleIds.contains)) {
+        return false;
+      }
+    }
+
+    final ch = channel ?? selectedChannel;
+    if (ch == null || ch.isDm) return true;
+    final g = currentGuild ?? selectedGuild;
+    if (g != null && emoji.guildId != null && emoji.guildId == g.id) {
+      return true;
+    }
+    final perms = currentChannelPermissions();
+    return DiscordPermissions.has(perms, DiscordPermissions.useExternalEmojis);
+  }
+
+  /// Resolves `:shortcode:` into `<:name:id>` / `<a:name:id>` and applies Vencord `FakeNitro`
+  /// hyperlink fallback if the channel blocks external emojis or the emoji is unboosted.
+  String _resolveEmojisForOutgoingMessage(String input) {
+    if (input.isEmpty) return input;
+
+    DiscordEmoji? findByExactName(String rawName) {
+      final target = rawName.toLowerCase();
+      final curGuild = selectedGuild;
+      if (curGuild != null) {
+        for (final e in curGuild.emojis) {
+          if (e.available && e.cleanName.toLowerCase() == target) return e;
+        }
+      }
+      for (final e in _applicationEmojis) {
+        if (e.available && e.cleanName.toLowerCase() == target) return e;
+      }
+      for (final g in _guilds.values) {
+        if (g.id == curGuild?.id) continue;
+        for (final e in g.emojis) {
+          if (e.available && e.cleanName.toLowerCase() == target) return e;
+        }
+      }
+      // Fallback to unavailable emoji if FakeNitro is enabled
+      if (vencord.isPluginEnabled('FakeNitro')) {
+        for (final g in _guilds.values) {
+          for (final e in g.emojis) {
+            if (e.cleanName.toLowerCase() == target) return e;
+          }
+        }
+      }
+      return null;
+    }
+
+    // Protect code blocks, inline code, URLs, and existing <a?:name:id> tags while resolving :shortcode:
+    final shortcodeProtectedRegex = RegExp(
+      r'(```[\s\S]*?```)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(https?://\S+)|(:([a-zA-Z0-9_~-]{2,32}):)',
+    );
+    var text = input.replaceAllMapped(shortcodeProtectedRegex, (m) {
+      final shortcodeName = m.group(6);
+      if (shortcodeName == null) return m.group(0)!;
+      final found = findByExactName(shortcodeName);
+      return found != null ? found.markdown : m.group(0)!;
+    });
+
+    // Apply Vencord FakeNitro bypass ONLY for emojis that cannot be used natively in this channel
+    if (vencord.isPluginEnabled('FakeNitro') &&
+        vencord.getSetting<bool>('FakeNitro', 'enableEmojiBypass', true)) {
+      final perms = currentChannelPermissions();
+      final canEmbed =
+          DiscordPermissions.has(perms, DiscordPermissions.embedLinks);
+      if (canEmbed) {
+        final size = vencord.getSetting<int>('FakeNitro', 'emojiSize', 48);
+        final useHyperLink =
+            vencord.getSetting<bool>('FakeNitro', 'useHyperLinks', true);
+        final tagRegex = RegExp(
+          r'(```[\s\S]*?```)|(`[^`\n]+`)|(<(a?):([^:>\s]+):(\d+)>)',
+        );
+        text = text.replaceAllMapped(tagRegex, (m) {
+          final emojiTag = m.group(3);
+          if (emojiTag == null) return m.group(0)!;
+          final isAnim = m.group(4) == 'a';
+          final name = m.group(5)!;
+          final id = m.group(6)!;
+          final known = findCustomEmojiById(id) ??
+              DiscordEmoji(
+                id: id,
+                name: name,
+                animated: isAnim,
+                available: true,
+              );
+          if (canUseCustomEmojiNatively(known)) {
+            return emojiTag;
+          }
+          final ext = isAnim ? 'gif' : 'webp';
+          final url =
+              'https://cdn.discordapp.com/emojis/$id.$ext?size=$size&name=${Uri.encodeComponent(name)}&lossless=true';
+          return useHyperLink ? '[$name]($url)' : url;
+        });
+      }
+    }
+
+    return text;
+  }
+
   void toggleCategoryCollapse(String categoryId) {
     if (_collapsedCategoryIds.contains(categoryId)) {
       _collapsedCategoryIds.remove(categoryId);
@@ -660,16 +874,26 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
     if (!guild.channelsLoaded && _rest != null && _activeAccount != null) {
       try {
+        final prev = guild;
         guild = await _rest!.getGuildDetails(
           guildId,
           botUserId: _activeAccount!.id,
         );
+        if (!guild.emojisLoaded && prev.emojisLoaded) {
+          guild = guild.copyWith(
+            emojis: prev.emojis,
+            emojisLoaded: true,
+          );
+        }
         _guilds[guildId] = guild;
         _syncChannelReadBaseline(guild.channels);
         notifyListeners();
       } catch (_) {}
     } else {
       _syncChannelReadBaseline(guild.channels);
+    }
+    if (!guild!.emojisLoaded) {
+      unawaited(ensureAllGuildEmojisLoaded(priorityGuildId: guildId));
     }
 
     final resolvedGuild = guild!;
@@ -1080,7 +1304,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     var processedContent = rawPayloadOverride == null
-        ? vencord.applyPreSendContentHooks(content)
+        ? _resolveEmojisForOutgoingMessage(
+            vencord.applyPreSendContentHooks(content),
+          )
         : content;
 
     if (rawPayloadOverride == null &&
@@ -1220,7 +1446,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       await _rest!.addReaction(message.channelId, message.id, idStr);
     }
     final rxns = List<DiscordReaction>.from(message.reactions);
-    final idx = rxns.indexWhere((r) => r.emoji.apiIdentifier == idStr);
+    final idx = rxns.indexWhere((r) => (emoji.id != null && emoji.id!.isNotEmpty)
+        ? r.emoji.id == emoji.id
+        : (r.emoji.id == null && r.emoji.name == emoji.name));
     if (currentlyReactedByMe) {
       if (idx != -1) {
         final nextCount = rxns[idx].count - 1;
@@ -1808,7 +2036,27 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
                   : prev.features,
               ownerId: updated.ownerId,
               roles: updated.roles.isNotEmpty ? updated.roles : prev.roles,
-              emojis: updated.emojis.isNotEmpty ? updated.emojis : prev.emojis,
+              emojis: updated.emojisLoaded ? updated.emojis : prev.emojis,
+              emojisLoaded: updated.emojisLoaded || prev.emojisLoaded,
+            );
+            _scheduleCoalescedNotify();
+          }
+        }
+        break;
+
+      case 'GUILD_EMOJIS_UPDATE':
+        if (data is Map<String, dynamic>) {
+          final gId = data['guild_id']?.toString();
+          final rawEmojis = data['emojis'] as List<dynamic>?;
+          if (gId != null && rawEmojis != null && _guilds.containsKey(gId)) {
+            final parsedEmojis = rawEmojis
+                .whereType<Map<String, dynamic>>()
+                .map((e) => DiscordEmoji.fromJson(e, guildId: gId))
+                .where((e) => e.id != null && e.id!.isNotEmpty)
+                .toList();
+            _guilds[gId] = _guilds[gId]!.copyWith(
+              emojis: parsedEmojis,
+              emojisLoaded: true,
             );
             _scheduleCoalescedNotify();
           }

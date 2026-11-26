@@ -15,6 +15,7 @@ class DiscordMarkdownView extends StatelessWidget {
   final bool revealAllSpoilers;
   final bool alwaysAnimate;
   final bool roleColorMentions;
+  final bool transformFakeNitroEmojis;
   final Color? overrideTextColor;
   final void Function(String userId)? onTapUserMention;
 
@@ -28,6 +29,7 @@ class DiscordMarkdownView extends StatelessWidget {
     this.revealAllSpoilers = false,
     this.alwaysAnimate = false,
     this.roleColorMentions = false,
+    this.transformFakeNitroEmojis = true,
     this.overrideTextColor,
     this.onTapUserMention,
   });
@@ -50,6 +52,7 @@ class DiscordMarkdownView extends StatelessWidget {
         revealAllSpoilers: revealAllSpoilers,
         alwaysAnimate: alwaysAnimate,
         roleColorMentions: roleColorMentions,
+        transformFakeNitroEmojis: transformFakeNitroEmojis,
         overrideTextColor: overrideTextColor,
         onTapUserMention: onTapUserMention,
       );
@@ -72,6 +75,7 @@ class DiscordMarkdownView extends StatelessWidget {
               revealAllSpoilers: revealAllSpoilers,
               alwaysAnimate: alwaysAnimate,
               roleColorMentions: roleColorMentions,
+              transformFakeNitroEmojis: transformFakeNitroEmojis,
               overrideTextColor: overrideTextColor,
               onTapUserMention: onTapUserMention,
             ),
@@ -102,6 +106,7 @@ class DiscordMarkdownView extends StatelessWidget {
             revealAllSpoilers: revealAllSpoilers,
             alwaysAnimate: alwaysAnimate,
             roleColorMentions: roleColorMentions,
+            transformFakeNitroEmojis: transformFakeNitroEmojis,
             overrideTextColor: overrideTextColor,
             onTapUserMention: onTapUserMention,
           ),
@@ -206,6 +211,7 @@ class _RichParagraph extends StatefulWidget {
   final bool revealAllSpoilers;
   final bool alwaysAnimate;
   final bool roleColorMentions;
+  final bool transformFakeNitroEmojis;
   final Color? overrideTextColor;
   final void Function(String userId)? onTapUserMention;
 
@@ -218,6 +224,7 @@ class _RichParagraph extends StatefulWidget {
     this.revealAllSpoilers = false,
     this.alwaysAnimate = false,
     this.roleColorMentions = false,
+    this.transformFakeNitroEmojis = true,
     this.overrideTextColor,
     this.onTapUserMention,
   });
@@ -230,7 +237,19 @@ class _RichParagraphState extends State<_RichParagraph> {
   final Set<int> _revealedSpoilers = <int>{};
 
   static final RegExp _tokenRegex = RegExp(
-    r'(\|\|.+?\|\|)|(`[^`\n]+`)|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<a?:[a-zA-Z0-9_]+:\d+>)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
+    r'(\|\|.+?\|\|)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\))|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
+  );
+
+  static final RegExp _fakeNitroHyperlinkRegex = RegExp(
+    r'^\[([^\[\]\n]+)\]\((https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/(\d+)\.(webp|png|gif)[^\)\s]*)\)$',
+  );
+
+  static final RegExp _fakeNitroBareUrlRegex = RegExp(
+    r'^https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/(\d+)\.(webp|png|gif)(?:\?[^\s<>]*)?$',
+  );
+
+  static final RegExp _jumboOnlyRegex = RegExp(
+    r'^(?:\s*(?:<a?:[^:>\s]+:\d+>|\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\)|https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)(?:\?[^\s<>]*)?)\s*){1,27}(?:\*\(已編輯\)\*|\*\(已刪除\)\*)?\s*$',
   );
 
   @override
@@ -240,6 +259,9 @@ class _RichParagraphState extends State<_RichParagraph> {
       fontSize: widget.fontSize,
       height: 1.36,
     );
+    final isJumbo = _jumboOnlyRegex.hasMatch(widget.text);
+    final emojiDisplaySize = isJumbo ? 42.0 : 21.0;
+    final emojiFetchSize = isJumbo ? 96 : 48;
 
     final lines = widget.text.split('\n');
     final spans = <InlineSpan>[];
@@ -344,23 +366,72 @@ class _RichParagraphState extends State<_RichParagraph> {
           final animated = token.startsWith('<a:');
           final parts = token.substring(1, token.length - 1).split(':');
           if (parts.length >= 3) {
-            final emojiId = parts[2];
+            final emojiName = parts[1];
+            final emojiId = parts.last;
             final ext = (animated && (!widget.ecoMode || widget.alwaysAnimate))
                 ? 'gif'
                 : 'webp';
             spans.add(WidgetSpan(
               alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Image.network(
-                  'https://cdn.discordapp.com/emojis/$emojiId.$ext?size=40',
-                  width: 20,
-                  height: 20,
-                  cacheWidth: 40,
-                  errorBuilder: (_, __, ___) =>
-                      Text(':${parts[1]}:', style: lineStyle),
+              child: Tooltip(
+                message: ':$emojiName:',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Image.network(
+                    'https://cdn.discordapp.com/emojis/$emojiId.$ext?size=$emojiFetchSize',
+                    width: emojiDisplaySize,
+                    height: emojiDisplaySize,
+                    cacheWidth: emojiFetchSize,
+                    errorBuilder: (_, __, ___) =>
+                        Text(':$emojiName:', style: lineStyle),
+                  ),
                 ),
               ),
+            ));
+          }
+        } else if (token.startsWith('[') &&
+            _fakeNitroHyperlinkRegex.hasMatch(token)) {
+          final fnMatch = _fakeNitroHyperlinkRegex.firstMatch(token)!;
+          final label = fnMatch.group(1)!;
+          final fullUrl = fnMatch.group(2)!;
+          final emojiId = fnMatch.group(3)!;
+          final origExt = fnMatch.group(4)!;
+          if (widget.transformFakeNitroEmojis) {
+            final ext =
+                (origExt == 'gif' && (!widget.ecoMode || widget.alwaysAnimate))
+                    ? 'gif'
+                    : 'webp';
+            spans.add(WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Tooltip(
+                message: ':$label:',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Image.network(
+                    'https://cdn.discordapp.com/emojis/$emojiId.$ext?size=$emojiFetchSize',
+                    width: emojiDisplaySize,
+                    height: emojiDisplaySize,
+                    cacheWidth: emojiFetchSize,
+                    errorBuilder: (_, __, ___) =>
+                        Text(':$label:', style: lineStyle),
+                  ),
+                ),
+              ),
+            ));
+          } else {
+            spans.add(TextSpan(
+              text: label,
+              style: lineStyle.copyWith(
+                color: const Color(0xFF00A8FC),
+                decoration: TextDecoration.underline,
+              ),
+              recognizer: TapGestureRecognizer()
+                ..onTap = () {
+                  final uri = Uri.tryParse(fullUrl);
+                  if (uri != null) {
+                    launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
             ));
           }
         } else if (token.startsWith('<@&')) {
@@ -439,20 +510,46 @@ class _RichParagraphState extends State<_RichParagraph> {
             ),
           ));
         } else if (token.startsWith('http://') || token.startsWith('https://')) {
-          spans.add(TextSpan(
-            text: token,
-            style: lineStyle.copyWith(
-              color: const Color(0xFF00A8FC),
-              decoration: TextDecoration.underline,
-            ),
-            recognizer: TapGestureRecognizer()
-              ..onTap = () {
-                final uri = Uri.tryParse(token);
-                if (uri != null) {
-                  launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
-          ));
+          final bareEmoji = widget.transformFakeNitroEmojis
+              ? _fakeNitroBareUrlRegex.firstMatch(token)
+              : null;
+          if (bareEmoji != null) {
+            final emojiId = bareEmoji.group(1)!;
+            final origExt = bareEmoji.group(2)!;
+            final ext =
+                (origExt == 'gif' && (!widget.ecoMode || widget.alwaysAnimate))
+                    ? 'gif'
+                    : 'webp';
+            spans.add(WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Image.network(
+                  'https://cdn.discordapp.com/emojis/$emojiId.$ext?size=$emojiFetchSize',
+                  width: emojiDisplaySize,
+                  height: emojiDisplaySize,
+                  cacheWidth: emojiFetchSize,
+                  errorBuilder: (_, __, ___) =>
+                      Text(token, style: lineStyle),
+                ),
+              ),
+            ));
+          } else {
+            spans.add(TextSpan(
+              text: token,
+              style: lineStyle.copyWith(
+                color: const Color(0xFF00A8FC),
+                decoration: TextDecoration.underline,
+              ),
+              recognizer: TapGestureRecognizer()
+                ..onTap = () {
+                  final uri = Uri.tryParse(token);
+                  if (uri != null) {
+                    launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                },
+            ));
+          }
         } else {
           spans.add(TextSpan(text: token, style: lineStyle));
         }
