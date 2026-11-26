@@ -12,12 +12,11 @@ import '../widgets/guild_tools_sheet.dart';
 import '../widgets/message_tile.dart';
 import '../widgets/settings_sheet.dart';
 
-/// 1:1 recreation of the latest 2025/2026 Discord Mobile "You Bar" UI
-/// matching the user's uploaded screenshots:
-/// - Left Onyx Server Squircles Rail + Top DM Circle
-/// - Right Rounded-Top (#14151A) Channel / DM Card with Search + Invite + 頻道與身分組 + INFO ⌄
-/// - Bottom Floating Cosmic "You Bar" Capsule (Avatar + Status Ring + Name ⌄ + Status + Bell Badge Pill)
-/// - Tap You Bar -> Opens Screenshot 1's Full Modal Profile Sheet (Banner + X + Thought Bubble + 4 Sub-tabs + Bottom 4-Icon Dock)
+/// Authentic 2025/2026 Discord Mobile 3-Panel Gesture Architecture:
+/// - Panel -1.0 (Left): Server Rail + Channel/DM List + Clean Solid Floating You Bar
+/// - Panel  0.0 (Center): Active Channel / DM / Forum Chat View
+/// - Panel +1.0 (Right): Channel Details & Categorized Role Member List Drawer
+/// All transitions support interactive 120fps finger-tracking horizontal drag & velocity fling!
 class HomeScreen extends StatefulWidget {
   final BotClientController controller;
 
@@ -27,15 +26,41 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  bool _chatOpenOnPhone = false;
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _panelCtrl;
   final _dmSearchCtrl = TextEditingController();
   String _dmFilter = '';
 
   @override
+  void initState() {
+    super.initState();
+    // -1.0 = Left Drawer (Rail + Channels + You Bar), 0.0 = Center Chat, +1.0 = Right Member Drawer
+    _panelCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 240),
+      lowerBound: -1.0,
+      upperBound: 1.0,
+      value: -1.0,
+    );
+    widget.controller.setActivelyViewingChat(false);
+  }
+
+  @override
   void dispose() {
+    _panelCtrl.dispose();
     _dmSearchCtrl.dispose();
     super.dispose();
+  }
+
+  void _animateToPanel(double target) {
+    final clamped = target.clamp(-1.0, 1.0);
+    widget.controller.setActivelyViewingChat(clamped == 0.0);
+    _panelCtrl.animateTo(
+      clamped,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   static String _statusLabelZh(String st) {
@@ -54,12 +79,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openChannelChat(String channelId, {String? guildId}) {
     if (guildId == null) {
       widget.controller.selectDmMode().then((_) {
-        widget.controller.selectChannel(channelId);
+        widget.controller.selectChannel(channelId, markRead: true);
       });
     } else {
-      widget.controller.selectChannel(channelId);
+      widget.controller.selectChannel(channelId, markRead: true);
     }
-    setState(() => _chatOpenOnPhone = true);
+    _animateToPanel(0.0);
   }
 
   Future<void> _showNewMessageModal(DiscordPalette p) async {
@@ -109,14 +134,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 if (!RegExp(r'^[1-9]\d{16,19}$')
                                     .hasMatch(uid)) {
                                   setModalState(() {
-                                    errorText = '請輸入有效的 Discord User ID';
-                                  });
-                                  return;
-                                }
-                                if (uid ==
-                                    widget.controller.activeAccount?.id) {
-                                  setModalState(() {
-                                    errorText = '無法與自己開啟私訊';
+                                    errorText =
+                                        'Select a user or enter a valid Discord User ID.';
                                   });
                                   return;
                                 }
@@ -127,11 +146,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 try {
                                   await widget.controller.openDmWithUser(uid);
                                   if (ctx.mounted) Navigator.of(ctx).pop();
-                                  setState(() => _chatOpenOnPhone = true);
+                                  _animateToPanel(0.0);
                                 } catch (e) {
                                   setModalState(() {
                                     opening = false;
-                                    errorText = '無法開啟私訊：$e';
+                                    errorText = '$e';
                                   });
                                 }
                               },
@@ -184,6 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showNotificationsSheet(BotClientController ctrl, DiscordPalette p) {
+    ctrl.markNotificationsRead();
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -232,7 +252,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   size: 46, color: p.textMuted),
                               const SizedBox(height: 10),
                               Text(
-                                '目前還沒有任何通知',
+                                '目前沒有任何提及或私訊通知',
                                 style: TextStyle(
                                   color: p.textSecondary,
                                   fontSize: 15,
@@ -272,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   const SizedBox(height: 2),
                                   Text(
-                                    msg.author.displayName,
+                                    msg.authorDisplayName(guild),
                                     style: TextStyle(
                                       color: p.textPrimary,
                                       fontWeight: FontWeight.w700,
@@ -310,21 +330,106 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openPinsModal(DiscordPalette p) {
+    final ch = widget.controller.selectedChannel;
+    final rest = widget.controller.rest;
+    if (ch == null || rest == null) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.65,
+        builder: (_, sCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                '釘選訊息',
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Divider(height: 1, color: p.border),
+            Expanded(
+              child: FutureBuilder<List<DiscordMessage>>(
+                future: rest.getPinnedMessages(ch.id),
+                builder: (context, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final pins = snap.data ?? const [];
+                  if (pins.isEmpty) {
+                    return Center(
+                      child: Text(
+                        '此頻道目前沒有任何釘選訊息',
+                        style: TextStyle(color: p.textMuted, fontSize: 13.5),
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    controller: sCtrl,
+                    padding: const EdgeInsets.all(14),
+                    itemCount: pins.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(color: p.border, height: 18),
+                    itemBuilder: (_, i) {
+                      final m = pins[i];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          backgroundImage:
+                              NetworkImage(m.author.avatarUrl(size: 64)),
+                        ),
+                        title: Text(
+                          m.author.displayName,
+                          style: TextStyle(
+                            color: p.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        subtitle: Text(
+                          m.content.isEmpty ? '[Embed / 附件]' : m.content,
+                          style: TextStyle(color: p.textSecondary),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ctrl = widget.controller;
     final p = DiscordPalette(oled: ctrl.ecoSettings.oledBlackMode);
-    final isWide = MediaQuery.of(context).size.width >= 760;
+    final size = MediaQuery.of(context).size;
+    final isWide = size.width >= 840;
 
     if (isWide) {
+      // Desktop / Tablet 3-column layout
+      if (!ctrl.isActivelyViewingChat) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ctrl.setActivelyViewingChat(true);
+        });
+      }
       return Scaffold(
         backgroundColor: p.railBg,
         body: SafeArea(
           child: Row(
             children: [
               SizedBox(
-                width: 360,
-                child: _buildMainYouBarLayout(ctrl, p),
+                width: 340,
+                child: _buildLeftNavigationPanel(ctrl, p),
               ),
               VerticalDivider(width: 1, color: p.border),
               Expanded(
@@ -333,9 +438,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   palette: p,
                   showBackButton: false,
                   onBack: () {},
+                  onToggleRightDrawer: () {},
+                  onSelectForumPost: (threadId) =>
+                      ctrl.selectChannel(threadId, markRead: true),
                   onOpenDmFromChat: (uid) async {
                     await ctrl.openDmWithUser(uid);
                   },
+                ),
+              ),
+              VerticalDivider(width: 1, color: p.border),
+              SizedBox(
+                width: 280,
+                child: ChannelDetailsSidePanel(
+                  controller: ctrl,
+                  palette: p,
+                  onOpenPins: () => _openPinsModal(p),
+                  onSelectThread: (tid) =>
+                      ctrl.selectChannel(tid, markRead: true),
                 ),
               ),
             ],
@@ -344,65 +463,224 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // Phone: Full-Screen Chat View (slides back to Rail+Panel+YouBar on back or right-edge swipe)
-    if (_chatOpenOnPhone && ctrl.selectedChannel != null) {
-      return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) {
-            setState(() => _chatOpenOnPhone = false);
-          }
-        },
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if ((details.primaryVelocity ?? 0) > 420) {
-              setState(() => _chatOpenOnPhone = false);
+    // Phone: Authentic 3-Panel Interactive Horizontal Gesture Canvas!
+    return AnimatedBuilder(
+      animation: _panelCtrl,
+      builder: (context, _) {
+        final v = _panelCtrl.value; // -1.0 (Left) .. 0.0 (Chat) .. +1.0 (Right)
+        final canPopApp = v <= -0.95;
+
+        return PopScope(
+          canPop: canPopApp,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            if (v > 0.2) {
+              _animateToPanel(0.0);
+            } else {
+              _animateToPanel(-1.0);
             }
           },
           child: Scaffold(
-            backgroundColor: p.chatBg,
+            backgroundColor: p.railBg,
             body: SafeArea(
-              child: _DiscordChatPane(
-                controller: ctrl,
-                palette: p,
-                showBackButton: true,
-                onBack: () => setState(() => _chatOpenOnPhone = false),
-                onOpenDmFromChat: (uid) async {
-                  await ctrl.openDmWithUser(uid);
-                  setState(() => _chatOpenOnPhone = true);
+              bottom: v > -0.5,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final w = constraints.maxWidth;
+                  final rightDrawerW = w * 0.84;
+
+                  // Parallax & translation math
+                  final leftPanelOffset =
+                      v < 0 ? (-v - 1.0) * w * 0.28 : -w * 0.28;
+                  final chatOffset = v < 0
+                      ? (-v) * w
+                      : -v * rightDrawerW;
+                  final rightOffset = w - (v > 0 ? v * rightDrawerW : 0);
+
+                  return GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (details) {
+                      final dx = details.delta.dx;
+                      // Avoid stealing left-drag inside center chat unless starting near right edge (so Swipe-to-Reply works seamlessly!)
+                      if (_panelCtrl.value.abs() < 0.05 &&
+                          dx < 0 &&
+                          details.globalPosition.dx < w - 44) {
+                        return;
+                      }
+                      if (ctrl.selectedChannel == null &&
+                          _panelCtrl.value <= -0.95 &&
+                          dx < 0) {
+                        return;
+                      }
+                      final deltaVal = -dx / w;
+                      _panelCtrl.value =
+                          (_panelCtrl.value + deltaVal).clamp(-1.0, 1.0);
+                    },
+                    onHorizontalDragEnd: (details) {
+                      final vx = details.primaryVelocity ?? 0;
+                      final cur = _panelCtrl.value;
+                      if (vx < -480) {
+                        // Fast swipe left
+                        if (cur < -0.15 && ctrl.selectedChannel != null) {
+                          _animateToPanel(0.0);
+                        } else if (cur >= -0.15) {
+                          _animateToPanel(1.0);
+                        } else {
+                          _animateToPanel(-1.0);
+                        }
+                      } else if (vx > 480) {
+                        // Fast swipe right
+                        if (cur > 0.15) {
+                          _animateToPanel(0.0);
+                        } else {
+                          _animateToPanel(-1.0);
+                        }
+                      } else {
+                        // Snap to nearest panel
+                        if (cur < -0.45) {
+                          _animateToPanel(-1.0);
+                        } else if (cur > 0.42) {
+                          _animateToPanel(1.0);
+                        } else {
+                          _animateToPanel(0.0);
+                        }
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        // 1. Left Panel (Server Rail + Channel/DM Sheet + Clean You Bar)
+                        if (v < -0.001)
+                          Transform.translate(
+                            offset: Offset(leftPanelOffset, 0),
+                            child: IgnorePointer(
+                              ignoring: v > -0.5,
+                              child: _buildLeftNavigationPanel(ctrl, p),
+                            ),
+                          ),
+
+                        // 2. Center Chat Panel (slides smoothly over Left Panel)
+                        if (v > -0.999)
+                          Transform.translate(
+                            offset: Offset(chatOffset, 0),
+                            child: DecoratedBox(
+                              decoration: const BoxDecoration(
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Color(0x88000000),
+                                    blurRadius: 20,
+                                    offset: Offset(-4, 0),
+                                  ),
+                                ],
+                              ),
+                              child: Stack(
+                                children: [
+                                  IgnorePointer(
+                                    ignoring: v < -0.2 || v > 0.2,
+                                    child: Container(
+                                      color: p.chatBg,
+                                      child: _DiscordChatPane(
+                                        controller: ctrl,
+                                        palette: p,
+                                        showBackButton: true,
+                                        onBack: () => _animateToPanel(-1.0),
+                                        onToggleRightDrawer: () =>
+                                            _animateToPanel(1.0),
+                                        onSelectForumPost: (tid) =>
+                                            _openChannelChat(
+                                          tid,
+                                          guildId: ctrl.selectedGuildId,
+                                        ),
+                                        onOpenDmFromChat: (uid) async {
+                                          try {
+                                            await ctrl.openDmWithUser(uid);
+                                            _animateToPanel(0.0);
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(content: Text('$e')),
+                                              );
+                                            }
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  // Tap-to-dismiss scrim when Left or Right drawer is open
+                                  if (v < -0.05 || v > 0.05)
+                                    Positioned.fill(
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => _animateToPanel(
+                                            v < -0.5 ? -1.0 : 0.0),
+                                        child: ColoredBox(
+                                          color: Colors.black.withAlpha(
+                                            ((v.abs()) * 120).round().clamp(0, 140),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // 3. Right Panel (Channel Info & Categorized Role Member List)
+                        if (v > 0.001)
+                          Positioned(
+                            top: 0,
+                            bottom: 0,
+                            left: rightOffset,
+                            width: rightDrawerW,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: Border(
+                                    left: BorderSide(
+                                        color: p.border, width: 0.8)),
+                              ),
+                              child: ChannelDetailsSidePanel(
+                                controller: ctrl,
+                                palette: p,
+                                onOpenPins: () => _openPinsModal(p),
+                                onSelectThread: (tid) {
+                                  ctrl.selectChannel(tid, markRead: true);
+                                  _animateToPanel(0.0);
+                                },
+                                onClosePanel: () => _animateToPanel(0.0),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
                 },
               ),
             ),
           ),
-        ),
-      );
-    }
-
-    // Main Home Screen matching Screenshot 2 (Rail + Rounded Panel + Floating You Bar)
-    return Scaffold(
-      backgroundColor: p.railBg,
-      body: SafeArea(
-        bottom: false,
-        child: _buildMainYouBarLayout(ctrl, p),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildMainYouBarLayout(BotClientController ctrl, DiscordPalette p) {
+  Widget _buildLeftNavigationPanel(
+    BotClientController ctrl,
+    DiscordPalette p,
+  ) {
     final isDmMode = ctrl.selectedGuildId == null;
     final guilds = ctrl.guilds;
     final selectedGuild = ctrl.selectedGuild;
     final iconPx = ctrl.ecoSettings.avatarSize;
+    final hasUnreadDms =
+        ctrl.dmChannels.any((c) => ctrl.unreadChannelIds.contains(c.id));
 
     return Stack(
       children: [
-        // 1. Left Server Rail + Right Rounded Sheet
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Left Vertical Rail (68px) — Squircles for Servers, Circle for top DM!
+              // Left Vertical Server Rail (68px)
               SizedBox(
                 width: 68,
                 child: ListView(
@@ -418,7 +696,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             AnimatedContainer(
                               duration: const Duration(milliseconds: 160),
                               width: 4,
-                              height: isDmMode ? 32 : 0,
+                              height: isDmMode
+                                  ? 32
+                                  : (hasUnreadDms ? 8 : 0),
                               decoration: const BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.horizontal(
@@ -456,7 +736,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Divider(height: 1, color: p.border),
                     ),
 
-                    // Server Squircles (matching Screenshot 2!)
+                    // Server Squircles
                     ...guilds.map((g) {
                       final selected =
                           !isDmMode && ctrl.selectedGuildId == g.id;
@@ -530,7 +810,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // Right Rounded Card (#14151A, topLeft & topRight 24px matching Screenshot 2)
+              // Right Rounded Channel / DM Card
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 4),
@@ -558,87 +838,88 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
 
-        // 2. Bottom Floating Cosmic "You Bar" Capsule (1:1 Screenshot 2!)
+        // Bottom Clean Solid Floating "You Bar" (NO fake user nameplate cosmetics!)
         Positioned(
           left: 10,
           right: 10,
           bottom: MediaQuery.of(context).padding.bottom + 8,
-          child: _buildFloatingYouBar(ctrl, p),
+          child: _buildCleanFloatingYouBar(ctrl, p),
         ),
       ],
     );
   }
 
-  /// Exact Floating "You Bar" at the bottom of Screenshot 2!
-  Widget _buildFloatingYouBar(BotClientController ctrl, DiscordPalette p) {
+  /// Clean, non-decorated Discord Mobile "You Bar":
+  /// - Tap: opens Profile Modal
+  /// - Long-press: opens Switch Accounts
+  /// - Horizontal swipe across You Bar: flips between DMs and active Server!
+  Widget _buildCleanFloatingYouBar(
+    BotClientController ctrl,
+    DiscordPalette p,
+  ) {
     final acc = ctrl.activeAccount;
     if (acc == null) return const SizedBox.shrink();
 
-    final badgeCount =
-        ctrl.notifications.length + ctrl.unreadChannelIds.length;
-    final bannerUrl = acc.bannerUrl(size: 480);
+    final badgeCount = ctrl.unreadNotificationCount;
 
     return GestureDetector(
       onTap: () => showYouProfileModal(context, ctrl),
       onLongPress: () => showSwitchAccountsSheet(context, ctrl),
+      onHorizontalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0).abs() > 260) {
+          HapticFeedback.selectionClick();
+          ctrl.flipDmAndServer();
+        }
+      },
       child: Container(
-        height: 60,
+        height: 58,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: const Color(0xFF2D3142), width: 1.0),
+          color: p.bottomBarBg,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: p.border, width: 1.0),
           boxShadow: const [
             BoxShadow(
-              color: Color(0xAA000000),
+              color: Color(0x99000000),
               blurRadius: 18,
               offset: Offset(0, 6),
             ),
           ],
-          gradient: const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              Color(0xFF181A24),
-              Color(0xFF172236),
-              Color(0xFF12355B),
-            ],
-          ),
-          image: bannerUrl != null
-              ? DecorationImage(
-                  image: NetworkImage(bannerUrl),
-                  fit: BoxFit.cover,
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xAA10131C),
-                    BlendMode.darken,
-                  ),
-                )
-              : null,
         ),
         padding: const EdgeInsets.fromLTRB(7, 6, 10, 6),
         child: Row(
           children: [
-            // Left Circular Avatar + Exact Discord Status Ring
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                CircleAvatar(
-                  radius: 23,
-                  backgroundImage: NetworkImage(acc.avatarUrl(size: 96)),
-                ),
-                Positioned(
-                  right: -1,
-                  bottom: -1,
-                  child: DiscordStatusBadge(
-                    status: ctrl.botStatus,
-                    size: 16,
-                    borderColor: const Color(0xFF181A24),
-                    borderWidth: 2.8,
+            // Avatar + Authentic Status Badge
+            GestureDetector(
+              onLongPress: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => DiscordSettingsScreen(controller: ctrl),
                   ),
-                ),
-              ],
+                );
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundImage: NetworkImage(acc.avatarUrl(size: 96)),
+                  ),
+                  Positioned(
+                    right: -1,
+                    bottom: -1,
+                    child: DiscordStatusBadge(
+                      status: ctrl.botStatus,
+                      size: 15,
+                      borderColor: p.bottomBarBg,
+                      borderWidth: 2.6,
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(width: 10),
 
-            // Middle: Display Name + Tag Pill + Chevron + Status Text
+            // Display Name + Official APP Badge + Chevron + Status Subtitle
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -651,34 +932,34 @@ class _HomeScreenState extends State<HomeScreen> {
                           acc.displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: p.textPrimary,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 5),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 5.5, vertical: 1.5),
+                            horizontal: 4.5, vertical: 1),
                         decoration: BoxDecoration(
-                          color: const Color(0xBB1E2130),
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(
-                              color: const Color(0xFF34384E), width: 0.6),
+                          color: DiscordPalette.blurple,
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            Icon(Icons.bolt_rounded,
-                                size: 11, color: Color(0xFFB784F7)),
-                            SizedBox(width: 2),
-                            Text(
-                              'BOT',
+                          children: [
+                            if (acc.isVerifiedBot) ...[
+                              const Icon(Icons.check_rounded,
+                                  size: 10, color: Colors.white),
+                              const SizedBox(width: 1),
+                            ],
+                            const Text(
+                              'APP',
                               style: TextStyle(
-                                color: Color(0xFFE3E5E8),
-                                fontSize: 10,
+                                color: Colors.white,
+                                fontSize: 9.5,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -686,10 +967,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(width: 2),
-                      const Icon(
+                      Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: 18,
-                        color: Color(0xFFD5D7DD),
+                        color: p.textSecondary,
                       ),
                     ],
                   ),
@@ -700,8 +981,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : _statusLabelZh(ctrl.botStatus),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFFB5BAC1),
+                    style: TextStyle(
+                      color: p.textMuted,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -710,24 +991,24 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            // Right Bell + Red Badge Pill (matching Screenshot 2!)
+            // Right Notification Bell Pill (red badge ONLY when unread notifications > 0!)
             GestureDetector(
               onTap: () => _showNotificationsSheet(ctrl, p),
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                 decoration: BoxDecoration(
-                  color: const Color(0xCC0E1017),
+                  color: p.elevatedBg,
                   borderRadius: BorderRadius.circular(20),
-                  border:
-                      Border.all(color: const Color(0xFF282C3C), width: 0.7),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.notifications_rounded,
-                      color: Colors.white,
+                    Icon(
+                      badgeCount > 0
+                          ? Icons.notifications_rounded
+                          : Icons.notifications_none_rounded,
+                      color: p.textPrimary,
                       size: 19,
                     ),
                     if (badgeCount > 0) ...[
@@ -779,7 +1060,7 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (ctx, setM) {
           final filtered = guild.channels
               .where((c) =>
-                  c.isMessageable &&
+                  c.isTopLevelChannel &&
                   widget.controller.canViewChannel(guild, c) &&
                   c.name.toLowerCase().contains(q.toLowerCase()))
               .toList();
@@ -797,7 +1078,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(color: p.textPrimary),
                     decoration: InputDecoration(
                       hintText: '搜尋頻道...',
-                      prefixIcon: Icon(Icons.search_rounded, color: p.textMuted),
+                      prefixIcon:
+                          Icon(Icons.search_rounded, color: p.textMuted),
                       filled: true,
                       fillColor: p.elevatedBg,
                       border: OutlineInputBorder(
@@ -814,7 +1096,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (_, i) {
                         final ch = filtered[i];
                         return ListTile(
-                          leading: Icon(Icons.tag_rounded, color: p.textMuted),
+                          leading: Icon(
+                            ch.isForum
+                                ? Icons.forum_outlined
+                                : Icons.tag_rounded,
+                            color: p.textMuted,
+                          ),
                           title: Text(ch.name,
                               style: TextStyle(color: p.textPrimary)),
                           onTap: () {
@@ -830,6 +1117,149 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _showServerActionsSheet(DiscordGuild guild, DiscordPalette p) {
+    final perms = widget.controller.currentChannelPermissions();
+    final canManageChannels =
+        DiscordPermissions.has(perms, DiscordPermissions.manageChannels);
+    final canAudit =
+        DiscordPermissions.has(perms, DiscordPermissions.viewAuditLog);
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                guild.name,
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: p.sidebarBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    if (canManageChannels)
+                      ListTile(
+                        leading: Icon(Icons.add_circle_outline,
+                            color: p.textPrimary),
+                        title: Text('建立頻道',
+                            style: TextStyle(color: p.textPrimary)),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _showCreateChannelModal(guild, p);
+                        },
+                      ),
+                    if (canAudit) ...[
+                      if (canManageChannels)
+                        Divider(height: 1, color: p.border),
+                      ListTile(
+                        leading: Icon(Icons.receipt_long_outlined,
+                            color: p.textPrimary),
+                        title: Text('檢視審計日誌',
+                            style: TextStyle(color: p.textPrimary)),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _showAuditLogModal(guild, p);
+                        },
+                      ),
+                    ],
+                    Divider(height: 1, color: p.border),
+                    ListTile(
+                      leading: Icon(Icons.copy_rounded,
+                          color: p.textSecondary),
+                      title: Text('複製伺服器 ID',
+                          style: TextStyle(color: p.textPrimary)),
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: guild.id));
+                        Navigator.of(ctx).pop();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAuditLogModal(DiscordGuild guild, DiscordPalette p) {
+    final rest = widget.controller.rest;
+    if (rest == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        builder: (_, sCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                '審計日誌',
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Divider(height: 1, color: p.border),
+            Expanded(
+              child: FutureBuilder<List<AuditLogEntry>>(
+                future: rest.getGuildAuditLogs(guild.id),
+                builder: (_, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final entries = snap.data ?? const [];
+                  if (entries.isEmpty) {
+                    return Center(
+                      child: Text('無審計紀錄或無檢視權限',
+                          style: TextStyle(color: p.textMuted)),
+                    );
+                  }
+                  return ListView.separated(
+                    controller: sCtrl,
+                    padding: const EdgeInsets.all(14),
+                    itemCount: entries.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: p.border),
+                    itemBuilder: (_, i) {
+                      final e = entries[i];
+                      return ListTile(
+                        dense: true,
+                        title: Text(e.actionLabel,
+                            style: TextStyle(color: p.textPrimary)),
+                        subtitle: Text(
+                          '執行者: ${e.userId ?? '-'} • 目標: ${e.targetId ?? '-'}${e.reason != null ? '\n原因: ${e.reason}' : ''}',
+                          style: TextStyle(color: p.textMuted, fontSize: 12),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -891,7 +1321,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Right Rounded Guild Channel Sheet (1:1 Screenshot 2!)
   Widget _buildGuildPanel(
     BotClientController ctrl,
     DiscordPalette p,
@@ -909,31 +1338,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final uncategorized = allChannels
         .where((c) =>
-            !c.isCategory &&
             c.parentId == null &&
-            c.isMessageable &&
+            c.isTopLevelChannel &&
             ctrl.canViewChannel(guild, c))
         .toList()
       ..sort((a, b) => a.position.compareTo(b.position));
 
     final channelWidgets = <Widget>[];
     for (final ch in uncategorized) {
-      channelWidgets.add(_buildScreenshotChannelRow(ctrl, p, guild, ch));
+      channelWidgets.add(_buildChannelRow(ctrl, p, guild, ch));
     }
 
     for (final cat in categories) {
       final children = allChannels
           .where((c) =>
-              !c.isCategory &&
               c.parentId == cat.id &&
-              c.isMessageable &&
+              c.isTopLevelChannel &&
               ctrl.canViewChannel(guild, c))
           .toList()
         ..sort((a, b) => a.position.compareTo(b.position));
       if (children.isEmpty) continue;
 
       final collapsed = ctrl.isCategoryCollapsed(cat.id);
-      // Category Header: "INFO ⌄" with chevron AFTER text (matching Screenshot 2!)
       channelWidgets.add(
         InkWell(
           onTap: () => ctrl.toggleCategoryCollapse(cat.id),
@@ -970,7 +1396,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!collapsed) {
         for (final ch in children) {
-          channelWidgets.add(_buildScreenshotChannelRow(ctrl, p, guild, ch));
+          channelWidgets.add(_buildChannelRow(ctrl, p, guild, ch));
+        }
+      } else {
+        // Discord behavior: keep unread or currently selected channels visible even when category is collapsed!
+        for (final ch in children) {
+          if (ch.id == ctrl.selectedChannelId ||
+              ctrl.unreadChannelIds.contains(ch.id)) {
+            channelWidgets.add(_buildChannelRow(ctrl, p, guild, ch));
+          }
         }
       }
     }
@@ -978,14 +1412,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 92),
       children: [
-        // 1. Server Title + Badge + Chevron + Member Count + Search + Invite (1:1 Screenshot 2)
+        // Server Header (checks REAL guild.features for badges & Community status!)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 14, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GestureDetector(
-                onTap: () => _showCreateChannelModal(guild, p),
+                onTap: () => _showServerActionsSheet(guild, p),
                 child: Row(
                   children: [
                     Flexible(
@@ -1000,12 +1434,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    const Icon(
-                      Icons.verified_rounded,
-                      size: 17,
-                      color: Color(0xFFD888F8),
-                    ),
+                    if (guild.isVerified || guild.isPartnered) ...[
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.verified_rounded,
+                        size: 17,
+                        color: guild.isVerified
+                            ? DiscordPalette.green
+                            : DiscordPalette.blurple,
+                      ),
+                    ],
                     const SizedBox(width: 3),
                     Icon(
                       Icons.chevron_right_rounded,
@@ -1015,20 +1453,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                guild.memberCount != null
-                    ? '${_formatMemberCount(guild.memberCount!)} 位成員 • 社群'
-                    : '${guild.channels.length} 個頻道 • 社群',
-                style: TextStyle(
-                  color: p.textMuted,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
+              if (guild.memberCount != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  guild.isCommunity
+                      ? '${_formatMemberCount(guild.memberCount!)} 位成員 • 社群'
+                      : '${_formatMemberCount(guild.memberCount!)} 位成員',
+                  style: TextStyle(
+                    color: p.textMuted,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 12),
 
-              // Search Bar Button + Square Person-Add Invite Button
               Row(
                 children: [
                   Expanded(
@@ -1100,66 +1539,54 @@ class _HomeScreenState extends State<HomeScreen> {
 
         Divider(height: 1, color: p.border),
 
-        // 2. "頻道與身分組" + "新的" pill row (matching Screenshot 2!)
-        InkWell(
-          onTap: () => _showChannelQuickSearch(guild, p),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            child: Row(
-              children: [
-                Icon(Icons.manage_search_rounded,
-                    size: 21, color: p.textMuted),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '頻道與身分組',
-                    style: TextStyle(
-                      color: p.textSecondary,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
+        // ONLY shown on real Community / Onboarding servers!
+        if (guild.hasOnboarding) ...[
+          InkWell(
+            onTap: () => _showChannelQuickSearch(guild, p),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.manage_search_rounded,
+                      size: 20, color: p.textMuted),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '頻道與身分組',
+                      style: TextStyle(
+                        color: p.textSecondary,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1F2442),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    '新的',
-                    style: TextStyle(
-                      color: Color(0xFF9AA9F7),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
+          Divider(height: 1, color: p.border),
+        ],
 
-        Divider(height: 1, color: p.border),
         const SizedBox(height: 6),
-
-        // 3. Channel Rows
         ...channelWidgets,
       ],
     );
   }
 
-  Widget _buildScreenshotChannelRow(
+  /// Authentic Discord Channel Row:
+  /// - Left white semicircle dot STRICTLY ONLY when `unread` is true (NEVER on `selected`!)
+  /// - Selected channel has rounded `#262831` highlight background
+  /// - Read non-selected channels use muted grey text
+  Widget _buildChannelRow(
     BotClientController ctrl,
     DiscordPalette p,
     DiscordGuild guild,
     DiscordChannel ch,
   ) {
     final selected = ctrl.selectedChannelId == ch.id;
-    final unread = ctrl.unreadChannelIds.contains(ch.id);
-    final lower = ch.name.toLowerCase();
-    final isRules = lower.contains('rule') || lower.contains('規則');
+    final unread = !selected && ctrl.unreadChannelIds.contains(ch.id);
+    final isRules = guild.rulesChannelId == ch.id;
     final isLocked = ch.permissionOverwrites.any(
       (ow) =>
           ow.id == guild.id &&
@@ -1172,9 +1599,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (isRules) {
       leadingIcon =
           Icon(Icons.fact_check_outlined, size: 20, color: iconColor);
+    } else if (ch.isForum) {
+      leadingIcon = Icon(Icons.forum_outlined, size: 20, color: iconColor);
     } else if (ch.type == 5) {
       leadingIcon = Icon(Icons.campaign_rounded, size: 21, color: iconColor);
-    } else if (ch.type == 2) {
+    } else if (ch.isVoice) {
       leadingIcon = Icon(Icons.volume_up_rounded, size: 20, color: iconColor);
     } else {
       leadingIcon = DiscordChannelHashIcon(
@@ -1187,8 +1616,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Stack(
       alignment: Alignment.centerLeft,
       children: [
-        // Left-edge white semicircle dot (matching Screenshot 2!)
-        if (unread || selected)
+        // White semicircle unread dot ONLY when channel genuinely has unread new messages!
+        if (unread)
           Container(
             width: 4,
             height: 8,
@@ -1204,7 +1633,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () => _openChannelChat(ch.id, guildId: guild.id),
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10.5),
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               decoration: BoxDecoration(
                 color: selected ? p.selectedChannelBg : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
@@ -1221,10 +1650,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(
                         color: (selected || unread)
                             ? Colors.white
-                            : p.textSecondary,
+                            : p.textMuted,
                         fontSize: 15.5,
                         fontWeight: (selected || unread)
-                            ? FontWeight.w700
+                            ? FontWeight.w600
                             : FontWeight.w500,
                       ),
                     ),
@@ -1238,7 +1667,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Right Rounded DM Panel (when top DM circle is active)
   Widget _buildDmPanel(BotClientController ctrl, DiscordPalette p) {
     final allDms = ctrl.dmChannels;
     final dms = _dmFilter.isEmpty
@@ -1331,38 +1759,62 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemBuilder: (_, idx) {
                     final ch = dms[idx];
                     final user = ch.dmRecipient;
-                    final unread = ctrl.unreadChannelIds.contains(ch.id);
+                    final selected = ctrl.selectedChannelId == ch.id;
+                    final unread =
+                        !selected && ctrl.unreadChannelIds.contains(ch.id);
 
-                    return ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      leading: CircleAvatar(
-                        radius: 21,
-                        backgroundImage: user != null
-                            ? NetworkImage(user.avatarUrl(size: 96))
-                            : null,
-                        child:
-                            user == null ? const Icon(Icons.person) : null,
-                      ),
-                      title: Text(
-                        ch.displayTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: unread ? Colors.white : p.textSecondary,
-                          fontWeight:
-                              unread ? FontWeight.w700 : FontWeight.w600,
-                          fontSize: 15,
+                    return Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        if (unread)
+                          Container(
+                            width: 4,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.horizontal(
+                                  right: Radius.circular(4)),
+                            ),
+                          ),
+                        ListTile(
+                          selected: selected,
+                          selectedTileColor: p.selectedChannelBg,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          leading: CircleAvatar(
+                            radius: 21,
+                            backgroundImage: user != null
+                                ? NetworkImage(user.avatarUrl(size: 96))
+                                : null,
+                            child: user == null
+                                ? const Icon(Icons.person)
+                                : null,
+                          ),
+                          title: Text(
+                            ch.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: (unread || selected)
+                                  ? Colors.white
+                                  : p.textSecondary,
+                              fontWeight: unread
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 15,
+                            ),
+                          ),
+                          subtitle: Text(
+                            user != null ? user.username : '私人訊息',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                TextStyle(color: p.textMuted, fontSize: 12.5),
+                          ),
+                          onTap: () => _openChannelChat(ch.id, guildId: null),
                         ),
-                      ),
-                      subtitle: Text(
-                        user != null ? user.username : '私人訊息',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: p.textMuted, fontSize: 12.5),
-                      ),
-                      onTap: () => _openChannelChat(ch.id, guildId: null),
+                      ],
                     );
                   },
                 ),
@@ -1372,12 +1824,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Full-Screen 1:1 Discord Mobile Chat View
+/// Center Chat / Forum Posts Pane
 class _DiscordChatPane extends StatefulWidget {
   final BotClientController controller;
   final DiscordPalette palette;
   final bool showBackButton;
   final VoidCallback onBack;
+  final VoidCallback onToggleRightDrawer;
+  final void Function(String threadChannelId) onSelectForumPost;
   final Future<void> Function(String userId) onOpenDmFromChat;
 
   const _DiscordChatPane({
@@ -1385,6 +1839,8 @@ class _DiscordChatPane extends StatefulWidget {
     required this.palette,
     required this.showBackButton,
     required this.onBack,
+    required this.onToggleRightDrawer,
+    required this.onSelectForumPost,
     required this.onOpenDmFromChat,
   });
 
@@ -1403,25 +1859,35 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
   String? _pendingAttachmentName;
   bool _sending = false;
   bool _hasText = false;
+  bool _showJumpBottom = false;
+  String _slashPrefix = '';
 
   @override
   void initState() {
     super.initState();
     _scrollCtrl.addListener(_onScroll);
-    _composerCtrl.addListener(() {
-      final nonEmpty = _composerCtrl.text.trim().isNotEmpty;
-      if (nonEmpty != _hasText) {
-        setState(() => _hasText = nonEmpty);
-      }
-    });
+    _composerCtrl.addListener(_onComposerChanged);
   }
 
   @override
   void dispose() {
     _scrollCtrl.removeListener(_onScroll);
+    _composerCtrl.removeListener(_onComposerChanged);
     _scrollCtrl.dispose();
     _composerCtrl.dispose();
     super.dispose();
+  }
+
+  void _onComposerChanged() {
+    final raw = _composerCtrl.text;
+    final nonEmpty = raw.trim().isNotEmpty;
+    final nextSlash = raw.startsWith('/') && !raw.contains('\n') ? raw : '';
+    if (nonEmpty != _hasText || nextSlash != _slashPrefix) {
+      setState(() {
+        _hasText = nonEmpty;
+        _slashPrefix = nextSlash;
+      });
+    }
   }
 
   void _onScroll() {
@@ -1429,6 +1895,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     final pos = _scrollCtrl.position;
     if (pos.pixels >= pos.maxScrollExtent - 250) {
       widget.controller.loadOlderMessages();
+    }
+    final shouldShowJump = pos.pixels > 380;
+    if (shouldShowJump != _showJumpBottom) {
+      setState(() => _showJumpBottom = shouldShowJump);
     }
   }
 
@@ -1461,8 +1931,14 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
         _composerCtrl.clear();
       });
       try {
-        await widget.controller.editChatMessage(target.id, text);
-      } catch (_) {}
+        await widget.controller.editChatMessage(target.id, newContent: text);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e')),
+          );
+        }
+      }
       return;
     }
 
@@ -1470,6 +1946,37 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
         (embeds == null || embeds.isEmpty) &&
         _pendingAttachmentBytes == null) {
       return;
+    }
+
+    // Check built-in DiscordBotClient commands (/ping, /purge, /switch)
+    if (embeds == null &&
+        _pendingAttachmentBytes == null &&
+        text.startsWith('/')) {
+      setState(() {
+        _sending = true;
+        _composerCtrl.clear();
+      });
+      try {
+        final feedback =
+            await widget.controller.tryExecuteBuiltInCommand(text);
+        if (feedback != null) {
+          if (mounted && feedback != 'Pong!') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(feedback)),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e')),
+          );
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _sending = false);
+      }
     }
 
     final replyId = _replyTarget?.id;
@@ -1510,95 +2017,56 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     }
   }
 
-  void _openPinsSheet() {
-    final ch = widget.controller.selectedChannel;
-    final rest = widget.controller.rest;
-    final p = widget.palette;
-    if (ch == null || rest == null) return;
+  Widget _buildSlashAutocompleteBar(DiscordPalette p) {
+    if (_slashPrefix.isEmpty) return const SizedBox.shrink();
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.65,
-        builder: (_, sCtrl) {
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Text(
-                  '釘選訊息',
-                  style: TextStyle(
-                    color: p.textPrimary,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Divider(height: 1, color: p.border),
-              Expanded(
-                child: FutureBuilder<List<DiscordMessage>>(
-                  future: rest.getPinnedMessages(ch.id),
-                  builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final pins = snap.data ?? const [];
-                    if (pins.isEmpty) {
-                      return Center(
-                        child: Text(
-                          '此頻道目前沒有任何釘選訊息',
-                          style: TextStyle(color: p.textMuted, fontSize: 13.5),
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      controller: sCtrl,
-                      padding: const EdgeInsets.all(14),
-                      itemCount: pins.length,
-                      separatorBuilder: (_, __) =>
-                          Divider(color: p.border, height: 18),
-                      itemBuilder: (_, i) {
-                        final m = pins[i];
-                        return ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundImage:
-                                NetworkImage(m.author.avatarUrl(size: 64)),
-                          ),
-                          title: Text(
-                            m.author.displayName,
-                            style: TextStyle(
-                              color: p.textPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          subtitle: Text(
-                            m.content.isEmpty ? '[Embed / 附件]' : m.content,
-                            style: TextStyle(color: p.textSecondary),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          );
-        },
+    const commands = [
+      ('/ping', '傳送 Pong! 測試機器人回應'),
+      ('/purge ', '批次刪除頻道內近期訊息 (2–100 則)'),
+      ('/switch shard ', '切換連線的 Gateway Shard ID'),
+      ('/switch guild ', '根據伺服器 ID 自動計算並切換分片'),
+    ];
+
+    final matches = commands
+        .where((c) => c.$1.startsWith(_slashPrefix.split(' ').first))
+        .toList();
+    if (matches.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      decoration: BoxDecoration(
+        color: p.sidebarBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
       ),
-    );
-  }
-
-  void _openMembersSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => ChannelMembersSheet(
-        controller: widget.controller,
-        palette: widget.palette,
-        onOpenPins: _openPinsSheet,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: matches.map((m) {
+          return ListTile(
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            leading: const Icon(Icons.terminal_rounded,
+                size: 18, color: DiscordPalette.blurple),
+            title: Text(
+              m.$1.trim(),
+              style: TextStyle(
+                color: p.textPrimary,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: Text(
+              m.$2,
+              style: TextStyle(color: p.textMuted, fontSize: 11.5),
+            ),
+            onTap: () {
+              _composerCtrl.text = m.$1;
+              _composerCtrl.selection = TextSelection.fromPosition(
+                TextPosition(offset: _composerCtrl.text.length),
+              );
+            },
+          );
+        }).toList(),
       ),
     );
   }
@@ -1649,7 +2117,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               Expanded(
                 child: InkWell(
                   borderRadius: BorderRadius.circular(6),
-                  onTap: _openMembersSheet,
+                  onTap: widget.onToggleRightDrawer,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(
@@ -1662,9 +2130,11 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                           )
                         else
                           Icon(
-                            channel.isVoice
-                                ? Icons.volume_up_rounded
-                                : Icons.tag_rounded,
+                            channel.isForum
+                                ? Icons.forum_outlined
+                                : (channel.isVoice
+                                    ? Icons.volume_up_rounded
+                                    : Icons.tag_rounded),
                             size: 21,
                             color: p.textMuted,
                           ),
@@ -1689,146 +2159,315 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               IconButton(
                 icon: Icon(Icons.group_rounded,
                     color: p.textSecondary, size: 22),
-                onPressed: _openMembersSheet,
+                onPressed: widget.onToggleRightDrawer,
               ),
             ],
           ),
         ),
 
-        // 120fps Virtualized Chat Feed
+        // Forum Posts View vs Standard 120fps Chat Feed
         Expanded(
-          child: ValueListenableBuilder<bool>(
-            valueListenable: ctrl.loadingMessagesNotifier,
-            builder: (_, loading, __) {
-              if (loading) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              return ValueListenableBuilder<List<DiscordMessage>>(
-                valueListenable: ctrl.messagesNotifier,
-                builder: (_, messages, __) {
-                  if (messages.isEmpty) {
-                    return RefreshIndicator(
-                      onRefresh: ctrl.refreshCurrentChannel,
-                      child: ListView(
-                        reverse: true,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+          child: channel.isForum
+              ? FutureBuilder<List<DiscordChannel>>(
+                  future: ctrl.fetchForumThreads(channel),
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final posts = snap.data ?? const [];
+                    if (posts.isEmpty) {
+                      return Center(
+                        child: Text('此論壇頻道目前尚無貼文',
+                            style: TextStyle(color: p.textMuted)),
+                      );
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: posts.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, idx) {
+                        final post = posts[idx];
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => widget.onSelectForumPost(post.id),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: p.sidebarBg,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: p.border, width: 0.7),
+                            ),
+                            child: Row(
                               children: [
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: p.inputBg,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    channel.isDm
-                                        ? Icons.alternate_email_rounded
-                                        : Icons.tag_rounded,
-                                    size: 34,
-                                    color: p.textPrimary,
+                                Icon(Icons.chat_outlined,
+                                    size: 20, color: p.textSecondary),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    post.name,
+                                    style: TextStyle(
+                                      color: p.textPrimary,
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  channel.isDm
-                                      ? channel.displayTitle
-                                      : '歡迎來到 #${channel.name}！',
-                                  style: TextStyle(
-                                    color: p.textPrimary,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  channel.isDm
-                                      ? '這是您與 ${channel.displayTitle} 私人訊息紀錄的開頭。'
-                                      : '這是 #${channel.name} 頻道的起點。',
-                                  style: TextStyle(
-                                    color: p.textSecondary,
-                                    fontSize: 14,
-                                  ),
-                                ),
+                                Icon(Icons.chevron_right_rounded,
+                                    color: p.textMuted),
                               ],
                             ),
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     );
-                  }
-
-                  return ListView.builder(
-                    controller: _scrollCtrl,
-                    reverse: true,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = messages[index];
-                      bool compact = false;
-                      if (index + 1 < messages.length) {
-                        final older = messages[index + 1];
-                        if (older.author.id == msg.author.id &&
-                            msg.referencedMessage == null &&
-                            msg.timestamp
-                                    .difference(older.timestamp)
-                                    .inMinutes
-                                    .abs() <
-                                5) {
-                          compact = true;
+                  },
+                )
+              : Stack(
+                  children: [
+                    ValueListenableBuilder<bool>(
+                      valueListenable: ctrl.loadingMessagesNotifier,
+                      builder: (_, loading, __) {
+                        if (loading) {
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
-                      }
-
-                      return MessageTile(
-                        key: ValueKey(msg.id),
-                        message: msg,
-                        compact: compact,
-                        palette: p,
-                        guild: guild,
-                        currentBotUserId: ctrl.activeAccount?.id ?? '',
-                        ecoMode: ctrl.ecoSettings.ecoPowerSaving,
-                        canManageMessages: canManageMessages,
-                        onReply: (m) => setState(() {
-                          _editingTarget = null;
-                          _replyTarget = m;
-                        }),
-                        onEdit: (m) => setState(() {
-                          _replyTarget = null;
-                          _editingTarget = m;
-                          _composerCtrl.text = m.content;
-                        }),
-                        onDelete: (m) async {
-                          try {
-                            await ctrl.deleteChatMessage(m.id);
-                          } catch (_) {}
-                        },
-                        onTogglePin: (m) async {
-                          try {
-                            if (m.pinned) {
-                              await ctrl.rest
-                                  ?.unpinMessage(m.channelId, m.id);
-                            } else {
-                              await ctrl.rest?.pinMessage(m.channelId, m.id);
+                        return ValueListenableBuilder<List<DiscordMessage>>(
+                          valueListenable: ctrl.messagesNotifier,
+                          builder: (_, messages, __) {
+                            if (messages.isEmpty) {
+                              return RefreshIndicator(
+                                onRefresh: ctrl.refreshCurrentChannel,
+                                child: ListView(
+                                  reverse: true,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            width: 60,
+                                            height: 60,
+                                            decoration: BoxDecoration(
+                                              color: p.inputBg,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              channel.isDm
+                                                  ? Icons
+                                                      .alternate_email_rounded
+                                                  : Icons.tag_rounded,
+                                              size: 34,
+                                              color: p.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            channel.isDm
+                                                ? channel.displayTitle
+                                                : '歡迎來到 #${channel.name}！',
+                                            style: TextStyle(
+                                              color: p.textPrimary,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            channel.isDm
+                                                ? '這是您與 ${channel.displayTitle} 私人訊息紀錄的開頭。'
+                                                : '這是 #${channel.name} 頻道的起點。',
+                                            style: TextStyle(
+                                              color: p.textSecondary,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
                             }
-                            await ctrl.refreshCurrentChannel();
-                          } catch (_) {}
-                        },
-                        onToggleReaction: (m, emoji, me) async {
-                          try {
-                            await ctrl.toggleReaction(m, emoji, me);
-                          } catch (_) {}
-                        },
-                        onOpenDm: widget.onOpenDmFromChat,
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
+
+                            return ListView.builder(
+                              controller: _scrollCtrl,
+                              reverse: true,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 10),
+                              itemCount: messages.length,
+                              itemBuilder: (context, index) {
+                                final msg = messages[index];
+                                bool compact = false;
+                                bool showDateDivider = false;
+                                if (index + 1 < messages.length) {
+                                  final older = messages[index + 1];
+                                  final sameDay = msg.timestamp.year ==
+                                          older.timestamp.year &&
+                                      msg.timestamp.month ==
+                                          older.timestamp.month &&
+                                      msg.timestamp.day == older.timestamp.day;
+                                  showDateDivider = !sameDay;
+                                  if (sameDay &&
+                                      older.author.id == msg.author.id &&
+                                      msg.referencedMessage == null &&
+                                      msg.timestamp
+                                              .difference(older.timestamp)
+                                              .inMinutes
+                                              .abs() <
+                                          7) {
+                                    compact = true;
+                                  }
+                                } else {
+                                  showDateDivider = true;
+                                }
+
+                                return MessageTile(
+                                  key: ValueKey(msg.id),
+                                  message: msg,
+                                  compact: compact,
+                                  showDateDivider: showDateDivider,
+                                  palette: p,
+                                  guild: guild,
+                                  currentBotUserId:
+                                      ctrl.activeAccount?.id ?? '',
+                                  ecoMode: ctrl.ecoSettings.ecoPowerSaving,
+                                  canManageMessages: canManageMessages,
+                                  onReply: (m) => setState(() {
+                                    _editingTarget = null;
+                                    _replyTarget = m;
+                                  }),
+                                  onEdit: (m) => setState(() {
+                                    _replyTarget = null;
+                                    _editingTarget = m;
+                                    _composerCtrl.text = m.content;
+                                  }),
+                                  onEditEmbed: (m) {
+                                    if (m.embeds.isEmpty) return;
+                                    showModalBottomSheet<void>(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      builder: (_) => EmbedComposerSheet(
+                                        palette: p,
+                                        initialEmbed: m.embeds.first,
+                                        onSend: (updatedEmbed, _) async {
+                                          try {
+                                            await ctrl.editChatMessage(
+                                              m.id,
+                                              newContent: m.content,
+                                              embeds: [updatedEmbed],
+                                            );
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                    content: Text('$e')),
+                                              );
+                                            }
+                                          }
+                                        },
+                                      ),
+                                    );
+                                  },
+                                  onDelete: (m) async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        backgroundColor: p.cardBg,
+                                        title: const Text('刪除訊息'),
+                                        content:
+                                            const Text('確定要刪除此則訊息嗎？'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(ctx).pop(false),
+                                            child: const Text('取消'),
+                                          ),
+                                          FilledButton(
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor:
+                                                  DiscordPalette.danger,
+                                            ),
+                                            onPressed: () =>
+                                                Navigator.of(ctx).pop(true),
+                                            child: const Text('刪除'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      try {
+                                        await ctrl.deleteChatMessage(m.id);
+                                      } catch (_) {}
+                                    }
+                                  },
+                                  onTogglePin: (m) async {
+                                    try {
+                                      if (m.pinned) {
+                                        await ctrl.rest?.unpinMessage(
+                                            m.channelId, m.id);
+                                      } else {
+                                        await ctrl.rest
+                                            ?.pinMessage(m.channelId, m.id);
+                                      }
+                                      await ctrl.refreshCurrentChannel();
+                                    } catch (_) {}
+                                  },
+                                  onToggleReaction: (m, emoji, me) async {
+                                    try {
+                                      await ctrl.toggleReaction(m, emoji, me);
+                                    } catch (_) {}
+                                  },
+                                  onOpenDm: widget.onOpenDmFromChat,
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+
+                    // Jump-to-Latest Floating Pill
+                    if (_showJumpBottom)
+                      Positioned(
+                        right: 14,
+                        bottom: 10,
+                        child: GestureDetector(
+                          onTap: () {
+                            if (_scrollCtrl.hasClients) {
+                              _scrollCtrl.animateTo(
+                                0,
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                              );
+                            }
+                          },
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: p.sidebarBg,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: p.border),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x66000000),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: p.textPrimary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
         ),
 
         // Typing Indicator
@@ -1848,6 +2487,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
           },
         ),
 
+        // Built-in Slash Command Autocomplete Bar
+        _buildSlashAutocompleteBar(p),
+
         // Replying / Editing / Attachment Bar
         if (_replyTarget != null ||
             _editingTarget != null ||
@@ -1866,7 +2508,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                         ? '正在編輯訊息'
                         : (_pendingAttachmentName != null
                             ? '已附加檔案：$_pendingAttachmentName'
-                            : '回覆 ${_replyTarget!.author.displayName}'),
+                            : '回覆 ${_replyTarget!.authorDisplayName(guild)}'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1890,122 +2532,125 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
             ),
           ),
 
-        // Bottom Chat Composer Bar
-        Container(
-          padding: const EdgeInsets.fromLTRB(10, 7, 10, 9),
-          decoration: BoxDecoration(
-            color: p.chatBg,
-            border: Border(top: BorderSide(color: p.border, width: 0.5)),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              GestureDetector(
-                onTap: canSend ? _pickAttachment : null,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: p.inputBg,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.add_rounded,
-                      color: p.textSecondary, size: 23),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: p.inputBg,
-                    borderRadius: BorderRadius.circular(21),
-                  ),
-                  padding: const EdgeInsets.only(left: 14, right: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _composerCtrl,
-                          enabled: canSend,
-                          minLines: 1,
-                          maxLines: 5,
-                          onChanged: (_) => ctrl.notifyUserTyping(),
-                          style:
-                              TextStyle(color: p.textPrimary, fontSize: 15),
-                          decoration: InputDecoration(
-                            hintText: canSend
-                                ? (channel.isDm
-                                    ? '傳送訊息給 @${channel.displayTitle}'
-                                    : '傳送訊息至 #${channel.name}')
-                                : '您沒有在此頻道發送訊息的權限',
-                            hintStyle:
-                                TextStyle(color: p.textMuted, fontSize: 14.5),
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 10),
-                          ),
-                        ),
-                      ),
-                      if (canSend && canEmbed)
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          tooltip: 'Create Embed',
-                          onPressed: () {
-                            showModalBottomSheet<void>(
-                              context: context,
-                              isScrollControlled: true,
-                              builder: (_) => EmbedComposerSheet(
-                                palette: p,
-                                onSend: (emb, extra) => _send(
-                                  embeds: [emb],
-                                  overrideContent: extra,
-                                ),
-                              ),
-                            );
-                          },
-                          icon: DbcEmbedIcon(
-                            size: 19,
-                            color: p.textSecondary,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              if (_hasText || _pendingAttachmentBytes != null || _sending) ...[
-                const SizedBox(width: 8),
+        // Bottom Chat Composer Bar (hidden on Forum root index)
+        if (!channel.isForum)
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 7, 10, 9),
+            decoration: BoxDecoration(
+              color: p.chatBg,
+              border: Border(top: BorderSide(color: p.border, width: 0.5)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
                 GestureDetector(
-                  onTap: (!canSend || _sending) ? null : () => _send(),
+                  onTap: canSend ? _pickAttachment : null,
                   child: Container(
                     width: 38,
                     height: 38,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: DiscordPalette.blurple,
+                    decoration: BoxDecoration(
+                      color: p.inputBg,
                       shape: BoxShape.circle,
                     ),
-                    child: _sending
-                        ? const SizedBox(
-                            width: 17,
-                            height: 17,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.send_rounded,
-                            size: 18,
-                            color: Colors.white,
-                          ),
+                    child: Icon(Icons.add_rounded,
+                        color: p.textSecondary, size: 23),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: p.inputBg,
+                      borderRadius: BorderRadius.circular(21),
+                    ),
+                    padding: const EdgeInsets.only(left: 14, right: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _composerCtrl,
+                            enabled: canSend,
+                            minLines: 1,
+                            maxLines: 5,
+                            onChanged: (_) => ctrl.notifyUserTyping(),
+                            style: TextStyle(
+                                color: p.textPrimary, fontSize: 15),
+                            decoration: InputDecoration(
+                              hintText: canSend
+                                  ? (channel.isDm
+                                      ? '傳送訊息給 @${channel.displayTitle}'
+                                      : '傳送訊息至 #${channel.name}')
+                                  : '您沒有在此頻道發送訊息的權限',
+                              hintStyle: TextStyle(
+                                  color: p.textMuted, fontSize: 14.5),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                        if (canSend && canEmbed)
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Create Embed',
+                            onPressed: () {
+                              showModalBottomSheet<void>(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (_) => EmbedComposerSheet(
+                                  palette: p,
+                                  onSend: (emb, extra) => _send(
+                                    embeds: [emb],
+                                    overrideContent: extra,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: DbcEmbedIcon(
+                              size: 19,
+                              color: p.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_hasText ||
+                    _pendingAttachmentBytes != null ||
+                    _sending) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: (!canSend || _sending) ? null : () => _send(),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: DiscordPalette.blurple,
+                        shape: BoxShape.circle,
+                      ),
+                      child: _sending
+                          ? const SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.send_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
       ],
     );
   }

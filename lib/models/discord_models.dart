@@ -8,23 +8,24 @@ class EcoSettings {
   final bool enableMembersIntent;
   final bool enablePresenceIntent;
   final bool silentTyping;
-  final bool showPerformanceHud;
 
   const EcoSettings({
     this.oledBlackMode = true,
     this.ecoPowerSaving = true,
     this.backgroundSuspendSeconds = 25,
     this.enableMessageContentIntent = true,
-    this.enableMembersIntent = false,
+    this.enableMembersIntent = true,
     this.enablePresenceIntent = false,
     this.silentTyping = true,
-    this.showPerformanceHud = false,
   });
 
-  /// Computes the Discord Gateway v10 Intents bitmask.
-  /// By excluding GUILD_PRESENCES (1 << 8) & TYPING in Eco mode, WebSocket
-  /// traffic & radio wakeups drop by up to 80% in large servers.
-  int computeIntentsBitmask({bool stripPrivileged = false}) {
+  /// Computes the Discord Gateway v10 Intents bitmask, automatically filtering
+  /// privileged intents against the bot's actual ApplicationFlags from
+  /// `/applications/@me` (matching DiscordBotClient/src/AppCore/IPCManager.ts).
+  int computeIntentsBitmask({
+    int? applicationFlags,
+    bool stripPrivileged = false,
+  }) {
     int mask = 0;
     mask |= (1 << 0); // GUILDS
     mask |= (1 << 9); // GUILD_MESSAGES
@@ -38,14 +39,27 @@ class EcoSettings {
     }
 
     if (!stripPrivileged) {
-      if (enableMembersIntent) {
-        mask |= (1 << 1); // GUILD_MEMBERS (Privileged)
+      final hasAppFlags = applicationFlags != null && applicationFlags > 0;
+
+      // ApplicationFlags: GATEWAY_GUILD_MEMBERS (1<<14) | LIMITED (1<<15)
+      final appAllowsMembers = !hasAppFlags ||
+          ((applicationFlags & ((1 << 14) | (1 << 15))) != 0);
+      if (enableMembersIntent && appAllowsMembers) {
+        mask |= (1 << 1); // GUILD_MEMBERS
       }
-      if (enablePresenceIntent && !ecoPowerSaving) {
-        mask |= (1 << 8); // GUILD_PRESENCES (Privileged - heavy battery drain)
+
+      // ApplicationFlags: GATEWAY_PRESENCE (1<<12) | LIMITED (1<<13)
+      final appAllowsPresence = !hasAppFlags ||
+          ((applicationFlags & ((1 << 12) | (1 << 13))) != 0);
+      if (enablePresenceIntent && !ecoPowerSaving && appAllowsPresence) {
+        mask |= (1 << 8); // GUILD_PRESENCES
       }
-      if (enableMessageContentIntent) {
-        mask |= (1 << 15); // MESSAGE_CONTENT (Privileged)
+
+      // ApplicationFlags: GATEWAY_MESSAGE_CONTENT (1<<18) | LIMITED (1<<19)
+      final appAllowsContent = !hasAppFlags ||
+          ((applicationFlags & ((1 << 18) | (1 << 19))) != 0);
+      if (enableMessageContentIntent && appAllowsContent) {
+        mask |= (1 << 15); // MESSAGE_CONTENT
       }
     }
     return mask;
@@ -62,7 +76,6 @@ class EcoSettings {
     bool? enableMembersIntent,
     bool? enablePresenceIntent,
     bool? silentTyping,
-    bool? showPerformanceHud,
   }) {
     return EcoSettings(
       oledBlackMode: oledBlackMode ?? this.oledBlackMode,
@@ -74,7 +87,6 @@ class EcoSettings {
       enableMembersIntent: enableMembersIntent ?? this.enableMembersIntent,
       enablePresenceIntent: enablePresenceIntent ?? this.enablePresenceIntent,
       silentTyping: silentTyping ?? this.silentTyping,
-      showPerformanceHud: showPerformanceHud ?? this.showPerformanceHud,
     );
   }
 
@@ -86,7 +98,6 @@ class EcoSettings {
         'enableMembersIntent': enableMembersIntent,
         'enablePresenceIntent': enablePresenceIntent,
         'silentTyping': silentTyping,
-        'showPerformanceHud': showPerformanceHud,
       };
 
   factory EcoSettings.fromJson(Map<String, dynamic> json) {
@@ -96,12 +107,25 @@ class EcoSettings {
       backgroundSuspendSeconds: json['backgroundSuspendSeconds'] as int? ?? 25,
       enableMessageContentIntent:
           json['enableMessageContentIntent'] as bool? ?? true,
-      enableMembersIntent: json['enableMembersIntent'] as bool? ?? false,
+      enableMembersIntent: json['enableMembersIntent'] as bool? ?? true,
       enablePresenceIntent: json['enablePresenceIntent'] as bool? ?? false,
       silentTyping: json['silentTyping'] as bool? ?? true,
-      showPerformanceHud: json['showPerformanceHud'] as bool? ?? false,
     );
   }
+}
+
+class DiscordBadgeInfo {
+  final String id;
+  final String description;
+  final String iconHash;
+
+  const DiscordBadgeInfo({
+    required this.id,
+    required this.description,
+    required this.iconHash,
+  });
+
+  String get iconUrl => 'https://cdn.discordapp.com/badge-icons/$iconHash.png';
 }
 
 class BotAccount {
@@ -115,6 +139,9 @@ class BotAccount {
   final int? accentColor;
   final String? bio;
   final String? applicationId;
+  final int publicFlags;
+  final int applicationFlags;
+  final int approximateGuildCount;
 
   const BotAccount({
     required this.token,
@@ -127,20 +154,101 @@ class BotAccount {
     this.accentColor,
     this.bio,
     this.applicationId,
+    this.publicFlags = 0,
+    this.applicationFlags = 0,
+    this.approximateGuildCount = 0,
   });
 
   String get displayName =>
       (globalName != null && globalName!.isNotEmpty) ? globalName! : username;
 
-  String get tag =>
-      (discriminator == '0' || discriminator.isEmpty)
-          ? username
-          : '$username#$discriminator';
+  String get tag => (discriminator == '0' || discriminator == '0000' || discriminator.isEmpty)
+      ? username
+      : '$username#$discriminator';
+
+  /// UserFlags.VerifiedBot = 1 << 16 (65536)
+  bool get isVerifiedBot => (publicFlags & (1 << 16)) != 0;
+
+  bool get hasMessageContentIntent =>
+      applicationFlags == 0 ||
+      (applicationFlags & ((1 << 18) | (1 << 19))) != 0;
+
+  /// Computes ONLY genuine Discord badges earned by this account/application
+  /// (matching DiscordBotClient/src/AppUtils/UserBadges.ts).
+  List<DiscordBadgeInfo> get realBadges {
+    final list = <DiscordBadgeInfo>[];
+    if ((publicFlags & (1 << 0)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'staff',
+        description: 'Discord Staff',
+        iconHash: '5e74e9b61934fc1f67c65515d1f7e60d',
+      ));
+    }
+    if ((publicFlags & (1 << 1)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'partner',
+        description: 'Partnered Server Owner',
+        iconHash: '3f9748e53446a137a052f3454e2de41e',
+      ));
+    }
+    if ((publicFlags & (1 << 6)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad_house_1',
+        description: 'HypeSquad Bravery',
+        iconHash: '8a88d63823d8a71cd5e390baa45efa02',
+      ));
+    }
+    if ((publicFlags & (1 << 7)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad_house_2',
+        description: 'HypeSquad Brilliance',
+        iconHash: '011940fd013da3f7fb926e4a1cd2e618',
+      ));
+    }
+    if ((publicFlags & (1 << 8)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'hypesquad_house_3',
+        description: 'HypeSquad Balance',
+        iconHash: '3aa41de486fa12454c3761e8e223442e',
+      ));
+    }
+    if ((publicFlags & (1 << 17)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'verified_developer',
+        description: 'Early Verified Bot Developer',
+        iconHash: '6df5892e0f35b051f8b61eace34f4967',
+      ));
+    }
+    if ((publicFlags & (1 << 22)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'active_developer',
+        description: 'Active Developer',
+        iconHash: '6bdc42827a38498929a4920da12695d9',
+      ));
+    }
+    // ApplicationFlags.ApplicationAutoModerationRuleCreateBadge = 1 << 6
+    if ((applicationFlags & (1 << 6)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'automod',
+        description: 'Uses AutoMod',
+        iconHash: 'f2459b691ac7453ed6039bbcfaccbfcd',
+      ));
+    }
+    // ApplicationFlags.ApplicationCommandBadge = 1 << 23
+    if ((applicationFlags & (1 << 23)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'bot_commands',
+        description: 'Supports Commands',
+        iconHash: '6f9e37f9029ff57aef81db857890005e',
+      ));
+    }
+    return list;
+  }
 
   String avatarUrl({int size = 64}) {
     if (avatar == null || avatar!.isEmpty) {
-      final index = (int.tryParse(id) ?? 0) % 5;
-      return 'https://cdn.discordapp.com/embed/avatars/$index.png';
+      final idx = ((BigInt.tryParse(id) ?? BigInt.zero) >> 22).toInt().abs() % 6;
+      return 'https://cdn.discordapp.com/embed/avatars/$idx.png';
     }
     return 'https://cdn.discordapp.com/avatars/$id/$avatar.webp?size=$size';
   }
@@ -161,6 +269,9 @@ class BotAccount {
         'accentColor': accentColor,
         'bio': bio,
         'applicationId': applicationId,
+        'publicFlags': publicFlags,
+        'applicationFlags': applicationFlags,
+        'approximateGuildCount': approximateGuildCount,
       };
 
   factory BotAccount.fromJson(Map<String, dynamic> json) {
@@ -175,6 +286,9 @@ class BotAccount {
       accentColor: json['accentColor'] as int?,
       bio: json['bio'] as String?,
       applicationId: json['applicationId']?.toString(),
+      publicFlags: json['publicFlags'] as int? ?? 0,
+      applicationFlags: json['applicationFlags'] as int? ?? 0,
+      approximateGuildCount: json['approximateGuildCount'] as int? ?? 0,
     );
   }
 }
@@ -186,6 +300,7 @@ class DiscordUser {
   final String? globalName;
   final String? avatar;
   final bool bot;
+  final int publicFlags;
 
   const DiscordUser({
     required this.id,
@@ -194,10 +309,13 @@ class DiscordUser {
     this.globalName,
     this.avatar,
     this.bot = false,
+    this.publicFlags = 0,
   });
 
   String get displayName =>
       (globalName != null && globalName!.isNotEmpty) ? globalName! : username;
+
+  bool get isVerifiedBot => bot && (publicFlags & (1 << 16)) != 0;
 
   String avatarUrl({int size = 64}) {
     if (avatar == null || avatar!.isEmpty) {
@@ -214,6 +332,7 @@ class DiscordUser {
         'global_name': globalName,
         'avatar': avatar,
         'bot': bot,
+        'public_flags': publicFlags,
       };
 
   factory DiscordUser.fromJson(Map<String, dynamic> json) {
@@ -224,6 +343,7 @@ class DiscordUser {
       globalName: json['global_name'] as String?,
       avatar: json['avatar'] as String?,
       bot: json['bot'] as bool? ?? false,
+      publicFlags: json['public_flags'] as int? ?? 0,
     );
   }
 }
@@ -244,11 +364,42 @@ class DiscordMember {
   String get effectiveName =>
       (nick != null && nick!.isNotEmpty) ? nick! : user.displayName;
 
-  factory DiscordMember.fromJson(Map<String, dynamic> json) {
-    final userMap = json['user'] as Map<String, dynamic>? ?? const {};
+  int? resolveColor(Map<String, DiscordRole> guildRoles) {
+    DiscordRole? highestColored;
+    for (final rId in roleIds) {
+      final r = guildRoles[rId];
+      if (r != null && r.color != 0) {
+        if (highestColored == null || r.position > highestColored.position) {
+          highestColored = r;
+        }
+      }
+    }
+    return highestColored?.color;
+  }
+
+  String? resolveHoistRoleId(Map<String, DiscordRole> guildRoles) {
+    DiscordRole? highestHoist;
+    for (final rId in roleIds) {
+      final r = guildRoles[rId];
+      if (r != null && r.hoist) {
+        if (highestHoist == null || r.position > highestHoist.position) {
+          highestHoist = r;
+        }
+      }
+    }
+    return highestHoist?.id;
+  }
+
+  factory DiscordMember.fromJson(
+    Map<String, dynamic> json, {
+    DiscordUser? fallbackUser,
+  }) {
+    final userMap = json['user'] as Map<String, dynamic>?;
     final rolesRaw = json['roles'] as List<dynamic>? ?? const [];
     return DiscordMember(
-      user: DiscordUser.fromJson(userMap),
+      user: userMap != null
+          ? DiscordUser.fromJson(userMap)
+          : (fallbackUser ?? const DiscordUser(id: '0', username: 'Unknown')),
       nick: json['nick'] as String?,
       roleIds: rolesRaw.map((e) => e.toString()).toList(),
       joinedAt: json['joined_at'] as String?,
@@ -358,14 +509,12 @@ class DiscordPermissions {
     }
 
     BigInt perms = basePerms;
-    // 1. @everyone overwrite
     for (final ow in channel.permissionOverwrites) {
       if (ow.id == guild.id) {
         perms &= ~ow.deny;
         perms |= ow.allow;
       }
     }
-    // 2. Role overwrites
     BigInt allowRoles = BigInt.zero;
     BigInt denyRoles = BigInt.zero;
     for (final ow in channel.permissionOverwrites) {
@@ -377,7 +526,6 @@ class DiscordPermissions {
     perms &= ~denyRoles;
     perms |= allowRoles;
 
-    // 3. Member-specific overwrite
     for (final ow in channel.permissionOverwrites) {
       if (ow.type == 1 && ow.id == botUserId) {
         perms &= ~ow.deny;
@@ -402,6 +550,7 @@ class DiscordChannel {
   final int rateLimitPerUser;
   final List<PermissionOverwrite> permissionOverwrites;
   final List<DiscordUser> recipients;
+  final int? messageCount;
 
   const DiscordChannel({
     required this.id,
@@ -415,11 +564,19 @@ class DiscordChannel {
     this.rateLimitPerUser = 0,
     this.permissionOverwrites = const [],
     this.recipients = const [],
+    this.messageCount,
   });
 
   bool get isCategory => type == 4;
   bool get isDm => type == 1 || type == 3;
   bool get isVoice => type == 2 || type == 13;
+  bool get isForum => type == 15 || type == 16;
+  bool get isThread => type == 10 || type == 11 || type == 12;
+
+  /// Visible in the server's main channel tree (threads live under parent/forum).
+  bool get isTopLevelChannel =>
+      type == 0 || type == 2 || type == 5 || type == 13 || type == 15 || type == 16;
+
   bool get isMessageable =>
       type == 0 ||
       type == 1 ||
@@ -428,7 +585,8 @@ class DiscordChannel {
       type == 5 ||
       type == 10 ||
       type == 11 ||
-      type == 12;
+      type == 12 ||
+      type == 15;
 
   String get displayTitle {
     if (isDm && recipients.isNotEmpty) {
@@ -461,6 +619,7 @@ class DiscordChannel {
       rateLimitPerUser: rateLimitPerUser ?? this.rateLimitPerUser,
       permissionOverwrites: permissionOverwrites ?? this.permissionOverwrites,
       recipients: recipients ?? this.recipients,
+      messageCount: messageCount,
     );
   }
 
@@ -508,6 +667,7 @@ class DiscordChannel {
           .map(PermissionOverwrite.fromJson)
           .toList(),
       recipients: recipients,
+      messageCount: json['message_count'] as int?,
     );
   }
 }
@@ -545,11 +705,15 @@ class DiscordGuild {
   final String id;
   final String name;
   final String? icon;
+  final String? banner;
   final String? ownerId;
   final int? memberCount;
+  final List<String> features;
+  final String? rulesChannelId;
   final Map<String, DiscordRole> roles;
   final List<DiscordChannel> channels;
   final List<DiscordEmoji> emojis;
+  final Map<String, DiscordMember> cachedMembers;
   final List<String> botRoleIds;
   final bool channelsLoaded;
 
@@ -557,14 +721,24 @@ class DiscordGuild {
     required this.id,
     required this.name,
     this.icon,
+    this.banner,
     this.ownerId,
     this.memberCount,
+    this.features = const [],
+    this.rulesChannelId,
     this.roles = const {},
     this.channels = const [],
     this.emojis = const [],
+    this.cachedMembers = const {},
     this.botRoleIds = const [],
     this.channelsLoaded = false,
   });
+
+  bool get isCommunity => features.contains('COMMUNITY');
+  bool get isVerified => features.contains('VERIFIED');
+  bool get isPartnered => features.contains('PARTNERED');
+  bool get hasOnboarding =>
+      features.contains('GUILD_ONBOARDING') || isCommunity;
 
   String? iconUrl({int size = 64}) {
     if (icon == null || icon!.isEmpty) return null;
@@ -575,7 +749,7 @@ class DiscordGuild {
     final words = name.trim().split(RegExp(r'\s+'));
     if (words.isEmpty || words.first.isEmpty) return '?';
     if (words.length == 1) {
-      return words.first.substring(0, words.first.length.clamp(1, 2));
+      return words.first.substring(0, words.first.length.clamp(1, 3));
     }
     return words.take(3).map((w) => w.isNotEmpty ? w[0] : '').join();
   }
@@ -583,11 +757,15 @@ class DiscordGuild {
   DiscordGuild copyWith({
     String? name,
     String? icon,
+    String? banner,
     String? ownerId,
     int? memberCount,
+    List<String>? features,
+    String? rulesChannelId,
     Map<String, DiscordRole>? roles,
     List<DiscordChannel>? channels,
     List<DiscordEmoji>? emojis,
+    Map<String, DiscordMember>? cachedMembers,
     List<String>? botRoleIds,
     bool? channelsLoaded,
   }) {
@@ -595,11 +773,15 @@ class DiscordGuild {
       id: id,
       name: name ?? this.name,
       icon: icon ?? this.icon,
+      banner: banner ?? this.banner,
       ownerId: ownerId ?? this.ownerId,
       memberCount: memberCount ?? this.memberCount,
+      features: features ?? this.features,
+      rulesChannelId: rulesChannelId ?? this.rulesChannelId,
       roles: roles ?? this.roles,
       channels: channels ?? this.channels,
       emojis: emojis ?? this.emojis,
+      cachedMembers: cachedMembers ?? this.cachedMembers,
       botRoleIds: botRoleIds ?? this.botRoleIds,
       channelsLoaded: channelsLoaded ?? this.channelsLoaded,
     );
@@ -628,7 +810,6 @@ class DiscordGuild {
         }
       }
     }
-    // Also merge active threads if sent in GUILD_CREATE
     final threadsRaw = json['threads'] as List<dynamic>?;
     if (threadsRaw != null) {
       for (final t in threadsRaw) {
@@ -644,15 +825,20 @@ class DiscordGuild {
         .map(DiscordEmoji.fromJson)
         .toList();
 
+    final featuresRaw = json['features'] as List<dynamic>? ?? const [];
+    final parsedFeatures = featuresRaw.map((e) => e.toString()).toList();
+
+    final membersMap = <String, DiscordMember>{};
     List<String> botRoles = const [];
-    if (currentBotUserId != null && json['members'] is List<dynamic>) {
+    if (json['members'] is List<dynamic>) {
       for (final m in (json['members'] as List<dynamic>)) {
         if (m is Map<String, dynamic>) {
-          final u = m['user'] as Map<String, dynamic>?;
-          if (u != null && u['id']?.toString() == currentBotUserId) {
-            final rList = m['roles'] as List<dynamic>? ?? const [];
-            botRoles = rList.map((e) => e.toString()).toList();
-            break;
+          final member = DiscordMember.fromJson(m);
+          if (member.user.id != '0') {
+            membersMap[member.user.id] = member;
+          }
+          if (currentBotUserId != null && member.user.id == currentBotUserId) {
+            botRoles = member.roleIds;
           }
         }
       }
@@ -662,12 +848,16 @@ class DiscordGuild {
       id: guildId,
       name: json['name'] as String? ?? 'Server',
       icon: json['icon'] as String?,
+      banner: json['banner'] as String?,
       ownerId: json['owner_id']?.toString(),
-      memberCount:
-          json['member_count'] as int? ?? json['approximate_member_count'] as int?,
+      memberCount: json['member_count'] as int? ??
+          json['approximate_member_count'] as int?,
+      features: parsedFeatures,
+      rulesChannelId: json['rules_channel_id']?.toString(),
       roles: rolesMap,
       channels: parsedChannels,
       emojis: parsedEmojis,
+      cachedMembers: membersMap,
       botRoleIds: botRoles,
       channelsLoaded: channelsRaw != null,
     );
@@ -915,6 +1105,8 @@ class DiscordMessage {
   final String channelId;
   final String? guildId;
   final DiscordUser author;
+  final String? memberNick;
+  final List<String> memberRoleIds;
   final String content;
   final DateTime timestamp;
   final DateTime? editedTimestamp;
@@ -933,6 +1125,8 @@ class DiscordMessage {
     required this.channelId,
     this.guildId,
     required this.author,
+    this.memberNick,
+    this.memberRoleIds = const [],
     required this.content,
     required this.timestamp,
     this.editedTimestamp,
@@ -947,6 +1141,30 @@ class DiscordMessage {
     this.stickerNames = const [],
   });
 
+  String authorDisplayName(DiscordGuild? guild) {
+    if (memberNick != null && memberNick!.isNotEmpty) return memberNick!;
+    final cached = guild?.cachedMembers[author.id];
+    if (cached?.nick != null && cached!.nick!.isNotEmpty) return cached.nick!;
+    return author.displayName;
+  }
+
+  int? authorRoleColor(DiscordGuild? guild) {
+    if (guild == null || guild.roles.isEmpty) return null;
+    final roles = memberRoleIds.isNotEmpty
+        ? memberRoleIds
+        : (guild.cachedMembers[author.id]?.roleIds ?? const []);
+    DiscordRole? highest;
+    for (final rId in roles) {
+      final r = guild.roles[rId];
+      if (r != null && r.color != 0) {
+        if (highest == null || r.position > highest.position) {
+          highest = r;
+        }
+      }
+    }
+    return highest?.color;
+  }
+
   DiscordMessage copyWith({
     String? content,
     DateTime? editedTimestamp,
@@ -960,6 +1178,8 @@ class DiscordMessage {
       channelId: channelId,
       guildId: guildId,
       author: author,
+      memberNick: memberNick,
+      memberRoleIds: memberRoleIds,
       content: content ?? this.content,
       timestamp: timestamp,
       editedTimestamp: editedTimestamp ?? this.editedTimestamp,
@@ -981,6 +1201,10 @@ class DiscordMessage {
     final rxnRaw = json['reactions'] as List<dynamic>? ?? const [];
     final compRows = json['components'] as List<dynamic>? ?? const [];
     final stickersRaw = json['sticker_items'] as List<dynamic>? ?? const [];
+    final memberJson = json['member'] as Map<String, dynamic>?;
+    final memberRoles = (memberJson?['roles'] as List<dynamic>? ?? const [])
+        .map((e) => e.toString())
+        .toList();
 
     final buttons = <DiscordComponentButton>[];
     for (final row in compRows) {
@@ -992,14 +1216,11 @@ class DiscordMessage {
               buttons.add(DiscordComponentButton.fromJson(c));
             }
           }
-        } else {
-          // V2 Component fallback
-          if (row['content'] is String) {
-            buttons.add(DiscordComponentButton(
-              type: row['type'] as int? ?? 10,
-              label: row['content'] as String?,
-            ));
-          }
+        } else if (row['content'] is String) {
+          buttons.add(DiscordComponentButton(
+            type: row['type'] as int? ?? 10,
+            label: row['content'] as String?,
+          ));
         }
       }
     }
@@ -1007,7 +1228,6 @@ class DiscordMessage {
     final refJson = json['referenced_message'] as Map<String, dynamic>?;
     final msgRef = json['message_reference'] as Map<String, dynamic>?;
 
-    // Poll summary if present
     String pollText = '';
     if (json['poll'] is Map<String, dynamic>) {
       final poll = json['poll'] as Map<String, dynamic>;
@@ -1017,7 +1237,7 @@ class DiscordMessage {
           .map((a) =>
               '• ${(a['poll_media'] as Map<String, dynamic>?)?['text'] ?? ''}')
           .join('\n');
-      pollText = '📊 **$q**\n$answers';
+      pollText = '**$q**\n$answers';
     }
 
     final rawContent = json['content'] as String? ?? '';
@@ -1031,6 +1251,8 @@ class DiscordMessage {
       guildId: json['guild_id']?.toString(),
       author: DiscordUser.fromJson(
           json['author'] as Map<String, dynamic>? ?? const {}),
+      memberNick: memberJson?['nick'] as String?,
+      memberRoleIds: memberRoles,
       content: finalContent,
       timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '')
               ?.toLocal() ??
@@ -1133,9 +1355,17 @@ class AuditLogEntry {
 
 DateTime snowflakeCreatedAt(String snowflake) {
   final id = BigInt.tryParse(snowflake) ?? BigInt.zero;
-  if (id <= BigInt.zero) return DateTime.fromMillisecondsSinceEpoch(1420070400000);
+  if (id <= BigInt.zero) {
+    return DateTime.fromMillisecondsSinceEpoch(1420070400000);
+  }
   final ms = (id >> 22).toInt() + 1420070400000;
   return DateTime.fromMillisecondsSinceEpoch(ms).toLocal();
+}
+
+int compareSnowflakes(String? a, String? b) {
+  final ba = BigInt.tryParse(a ?? '0') ?? BigInt.zero;
+  final bb = BigInt.tryParse(b ?? '0') ?? BigInt.zero;
+  return ba.compareTo(bb);
 }
 
 String encodeJsonSafe(Object value) => jsonEncode(value);

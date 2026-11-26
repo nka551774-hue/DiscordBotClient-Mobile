@@ -14,6 +14,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const String _kActiveAccountIdKey = 'dbc_active_account_id_v1';
   static const String _kEcoSettingsKey = 'dbc_eco_settings_v1';
   static const String _kDmChannelsPrefix = 'dbc_dm_channels_';
+  static const String _kReadStatePrefix = 'dbc_read_state_';
+  static const int _guildsPerShard = 1000;
 
   SharedPreferences? _prefs;
   DiscordRestClient? _rest;
@@ -43,7 +45,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   GatewayConnectionState _gatewayState = GatewayConnectionState.disconnected;
   GatewayConnectionState get gatewayState => _gatewayState;
 
-  // Granular ValueNotifiers so high-frequency events never rebuild the whole UI tree!
+  int get currentShard => _gateway?.currentShard ?? 0;
+  int get totalShards => _gateway?.totalShards ?? 1;
+
+  // Granular ValueNotifiers for 120fps isolated rebuilds
   final ValueNotifier<int?> pingMsNotifier = ValueNotifier<int?>(null);
   final ValueNotifier<int> gatewayEventsCountNotifier = ValueNotifier<int>(0);
   final ValueNotifier<List<DiscordMessage>> messagesNotifier =
@@ -53,7 +58,6 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   final ValueNotifier<String?> typingBannerNotifier =
       ValueNotifier<String?>(null);
 
-  // Guilds & Local Persistent DM Channels
   final LinkedHashMap<String, DiscordGuild> _guilds =
       LinkedHashMap<String, DiscordGuild>();
   List<DiscordGuild> get guilds => _guilds.values.toList(growable: false);
@@ -63,11 +67,47 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   List<DiscordChannel> get dmChannels =>
       _dmChannels.values.toList(growable: false);
 
+  // True Read-State tracking: white dot ONLY appears when a newer message arrives!
+  final Map<String, String> _lastReadMessageId = <String, String>{};
   final Set<String> _unreadChannelIds = <String>{};
   Set<String> get unreadChannelIds => _unreadChannelIds;
 
+  int _unreadNotificationCount = 0;
+  int get unreadNotificationCount => _unreadNotificationCount;
+
   final List<DiscordMessage> _notifications = <DiscordMessage>[];
   List<DiscordMessage> get notifications => List.unmodifiable(_notifications);
+
+  final Set<String> _collapsedCategoryIds = <String>{};
+  bool isCategoryCollapsed(String categoryId) =>
+      _collapsedCategoryIds.contains(categoryId);
+
+  String? _selectedGuildId; // null => Direct Messages view
+  String? get selectedGuildId => _selectedGuildId;
+  String? _lastNonDmGuildId;
+
+  DiscordGuild? get selectedGuild =>
+      _selectedGuildId != null ? _guilds[_selectedGuildId] : null;
+
+  String? _selectedChannelId;
+  String? get selectedChannelId => _selectedChannelId;
+
+  bool _isActivelyViewingChat = false;
+  bool get isActivelyViewingChat => _isActivelyViewingChat;
+
+  void setActivelyViewingChat(bool active) {
+    _isActivelyViewingChat = active;
+    if (active && _selectedChannelId != null) {
+      _markChannelRead(_selectedChannelId!);
+    }
+  }
+
+  void markNotificationsRead() {
+    if (_unreadNotificationCount != 0) {
+      _unreadNotificationCount = 0;
+      notifyListeners();
+    }
+  }
 
   void clearAuthError() {
     if (_authError != null) {
@@ -88,18 +128,6 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
-  final Set<String> _collapsedCategoryIds = <String>{};
-  bool isCategoryCollapsed(String categoryId) =>
-      _collapsedCategoryIds.contains(categoryId);
-
-  String? _selectedGuildId; // null => Direct Messages view
-  String? get selectedGuildId => _selectedGuildId;
-  DiscordGuild? get selectedGuild =>
-      _selectedGuildId != null ? _guilds[_selectedGuildId] : null;
-
-  String? _selectedChannelId;
-  String? get selectedChannelId => _selectedChannelId;
-
   DiscordChannel? get selectedChannel {
     if (_selectedChannelId == null) return null;
     if (_selectedGuildId == null) {
@@ -113,16 +141,15 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
-  // Bounded LRU cache of messages per channel (max 15 channels * 150 msgs)
   final LinkedHashMap<String, List<DiscordMessage>> _messageCache =
       LinkedHashMap<String, List<DiscordMessage>>();
   bool _loadingOlderMessages = false;
   bool get loadingOlderMessages => _loadingOlderMessages;
 
-  // Bot Presence state
+  // Bot Presence state (default activityType = 4 Custom Status)
   String _botStatus = 'online';
   String get botStatus => _botStatus;
-  int _botActivityType = 0;
+  int _botActivityType = 4;
   int get botActivityType => _botActivityType;
   String _botActivityName = '';
   String get botActivityName => _botActivityName;
@@ -130,6 +157,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _ecoSuspendTimer;
   Timer? _typingClearTimer;
   Timer? _coalesceNotifyTimer;
+  Timer? _saveReadStateTimer;
   DateTime _lastTypingTriggerSent = DateTime.fromMillisecondsSinceEpoch(0);
 
   DiscordRestClient? get rest => _rest;
@@ -183,10 +211,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     final cache = PaintingBinding.instance.imageCache;
     if (_ecoSettings.ecoPowerSaving) {
       cache.maximumSize = 120;
-      cache.maximumSizeBytes = 35 << 20; // 35 MB cap
+      cache.maximumSizeBytes = 35 << 20;
     } else {
       cache.maximumSize = 300;
-      cache.maximumSizeBytes = 80 << 20; // 80 MB cap
+      cache.maximumSizeBytes = 80 << 20;
     }
   }
 
@@ -242,22 +270,19 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final account = await candidateRest.validateBotToken();
 
-      // Clean up any existing session
       await _teardownSession(clearActivePref: false);
 
       _rest = candidateRest;
       _activeAccount = account;
 
-      // Save / update in saved accounts list
       _savedAccounts.removeWhere((a) => a.id == account.id);
       _savedAccounts.insert(0, account);
       await _persistAccounts();
       await _prefs?.setString(_kActiveAccountIdKey, account.id);
 
-      // Load local persistent DM channels for this bot (like DiscordBotClient)
+      _loadPersistedReadState(account.id);
       _loadPersistedDmChannels(account.id);
 
-      // Preload guild list via REST so UI populates immediately while Gateway connects
       try {
         final initialGuilds = await candidateRest.getUserGuilds();
         for (final g in initialGuilds) {
@@ -265,9 +290,14 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         }
       } catch (_) {}
 
-      // Start Gateway WebSocket
+      final computedShards =
+          (account.approximateGuildCount / _guildsPerShard).ceil().clamp(1, 64);
+
       _gateway = DiscordGatewayService(
         token: token,
+        applicationFlags: account.applicationFlags,
+        currentShard: 0,
+        totalShards: computedShards,
         ecoSettings: _ecoSettings,
         onDispatch: _handleGatewayDispatch,
         onStateChanged: (st) {
@@ -288,13 +318,12 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       );
       unawaited(_gateway!.connect());
 
-      // Auto-select first guild & first messageable channel
       if (_guilds.isNotEmpty) {
         await selectGuild(_guilds.keys.first);
       } else {
         _selectedGuildId = null;
         if (_dmChannels.isNotEmpty) {
-          await selectChannel(_dmChannels.keys.first);
+          await selectChannel(_dmChannels.keys.first, markRead: false);
         }
       }
 
@@ -329,6 +358,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _ecoSuspendTimer?.cancel();
     _typingClearTimer?.cancel();
     _coalesceNotifyTimer?.cancel();
+    _saveReadStateTimer?.cancel();
     await _gateway?.dispose();
     _gateway = null;
     _rest?.dispose();
@@ -338,10 +368,14 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _guilds.clear();
     _dmChannels.clear();
     _messageCache.clear();
+    _lastReadMessageId.clear();
     _unreadChannelIds.clear();
     _notifications.clear();
+    _unreadNotificationCount = 0;
     _selectedGuildId = null;
+    _lastNonDmGuildId = null;
     _selectedChannelId = null;
+    _isActivelyViewingChat = false;
     _gatewayState = GatewayConnectionState.disconnected;
     pingMsNotifier.value = null;
     gatewayEventsCountNotifier.value = 0;
@@ -359,6 +393,80 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     await _prefs?.setString(_kAccountsKey, encoded);
   }
 
+  void _loadPersistedReadState(String botId) {
+    _lastReadMessageId.clear();
+    _unreadChannelIds.clear();
+    final raw = _prefs?.getString('$_kReadStatePrefix$botId');
+    if (raw == null) return;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      map.forEach((k, v) {
+        if (v != null) _lastReadMessageId[k] = v.toString();
+      });
+    } catch (_) {}
+  }
+
+  void _scheduleSaveReadState() {
+    if (_saveReadStateTimer?.isActive ?? false) return;
+    _saveReadStateTimer = Timer(const Duration(seconds: 2), () {
+      final botId = _activeAccount?.id;
+      if (botId == null) return;
+      // Keep most recent 600 channel read states
+      if (_lastReadMessageId.length > 600) {
+        final keys = _lastReadMessageId.keys
+            .take(_lastReadMessageId.length - 600)
+            .toList();
+        for (final k in keys) {
+          _lastReadMessageId.remove(k);
+        }
+      }
+      _prefs?.setString(
+        '$_kReadStatePrefix$botId',
+        jsonEncode(_lastReadMessageId),
+      );
+    });
+  }
+
+  /// Syncs a channel's last_message_id with our persisted read state.
+  /// First-seen channels are baseline-marked at their current lastMessageId
+  /// so channels NEVER display false white unread dots on initial load.
+  void _syncChannelReadBaseline(Iterable<DiscordChannel> channels) {
+    bool changed = false;
+    for (final ch in channels) {
+      final lastMsg = ch.lastMessageId;
+      if (!_lastReadMessageId.containsKey(ch.id)) {
+        _lastReadMessageId[ch.id] = lastMsg ?? '0';
+        changed = true;
+      } else if (lastMsg != null &&
+          compareSnowflakes(lastMsg, _lastReadMessageId[ch.id]) > 0) {
+        if (!(_isActivelyViewingChat && _selectedChannelId == ch.id)) {
+          _unreadChannelIds.add(ch.id);
+        } else {
+          _lastReadMessageId[ch.id] = lastMsg;
+          changed = true;
+        }
+      }
+    }
+    if (changed) _scheduleSaveReadState();
+  }
+
+  void _markChannelRead(String channelId, {String? messageId}) {
+    final ch = findChannelById(channelId);
+    final newestId = messageId ??
+        (_messageCache[channelId]?.isNotEmpty == true
+            ? _messageCache[channelId]!.first.id
+            : ch?.lastMessageId);
+    final hadUnread = _unreadChannelIds.remove(channelId);
+    if (newestId != null &&
+        compareSnowflakes(newestId, _lastReadMessageId[channelId]) > 0) {
+      _lastReadMessageId[channelId] = newestId;
+      _scheduleSaveReadState();
+    }
+    if (hadUnread) {
+      notifyListeners();
+    }
+  }
+
   void _loadPersistedDmChannels(String botId) {
     _dmChannels.clear();
     final raw = _prefs?.getString('$_kDmChannelsPrefix$botId');
@@ -371,6 +479,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           _dmChannels[ch.id] = ch;
         }
       }
+      _syncChannelReadBaseline(_dmChannels.values);
     } catch (_) {}
   }
 
@@ -379,11 +488,6 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     if (botId == null) return;
     final list = _dmChannels.values.take(80).map((c) => c.toJson()).toList();
     await _prefs?.setString('$_kDmChannelsPrefix$botId', jsonEncode(list));
-  }
-
-  void dismissIntentsBanner() {
-    _disallowedIntentsBanner = false;
-    notifyListeners();
   }
 
   void toggleCategoryCollapse(String categoryId) {
@@ -395,11 +499,27 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
+  /// Flips between Direct Messages and last active Server (You Bar swipe gesture).
+  Future<void> flipDmAndServer() async {
+    if (_selectedGuildId == null) {
+      final targetGuild = _lastNonDmGuildId ??
+          (_guilds.isNotEmpty ? _guilds.keys.first : null);
+      if (targetGuild != null) {
+        await selectGuild(targetGuild);
+      }
+    } else {
+      await selectDmMode();
+    }
+  }
+
   Future<void> selectDmMode() async {
+    if (_selectedGuildId != null) {
+      _lastNonDmGuildId = _selectedGuildId;
+    }
     _selectedGuildId = null;
     if (_dmChannels.isNotEmpty) {
       final firstId = _dmChannels.keys.first;
-      await selectChannel(firstId);
+      await selectChannel(firstId, markRead: _isActivelyViewingChat);
     } else {
       _selectedChannelId = null;
       messagesNotifier.value = const [];
@@ -409,6 +529,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> selectGuild(String guildId) async {
     _selectedGuildId = guildId;
+    _lastNonDmGuildId = guildId;
     var guild = _guilds[guildId];
     if (guild == null) return;
 
@@ -421,24 +542,28 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           botUserId: _activeAccount!.id,
         );
         _guilds[guildId] = guild;
+        _syncChannelReadBaseline(guild.channels);
         notifyListeners();
       } catch (_) {}
+    } else {
+      _syncChannelReadBaseline(guild.channels);
     }
 
     final resolvedGuild = guild!;
-    // Pick first viewable text channel sorted by position
     final candidates = resolvedGuild.channels
-        .where((c) => c.isMessageable && canViewChannel(resolvedGuild, c))
+        .where((c) =>
+            c.isTopLevelChannel &&
+            !c.isForum &&
+            canViewChannel(resolvedGuild, c))
         .toList()
       ..sort((a, b) => a.position.compareTo(b.position));
 
     if (candidates.isNotEmpty) {
-      // Prefer type == 0 (standard text channel) first
       final textCh = candidates.firstWhere(
         (c) => c.type == 0,
         orElse: () => candidates.first,
       );
-      await selectChannel(textCh.id);
+      await selectChannel(textCh.id, markRead: _isActivelyViewingChat);
     } else {
       _selectedChannelId = null;
       messagesNotifier.value = const [];
@@ -472,6 +597,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       botUserId: _activeAccount!.id,
       botRoleIds: guild.botRoleIds,
     );
+    if (ch.isThread) {
+      return DiscordPermissions.has(
+          perms, DiscordPermissions.sendMessagesInThreads);
+    }
     return DiscordPermissions.has(perms, DiscordPermissions.sendMessages);
   }
 
@@ -493,18 +622,28 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<void> selectChannel(String channelId) async {
+  Future<void> selectChannel(String channelId, {bool markRead = true}) async {
     _selectedChannelId = channelId;
-    _unreadChannelIds.remove(channelId);
     typingBannerNotifier.value = null;
+    if (markRead) {
+      _markChannelRead(channelId);
+    }
     notifyListeners();
+
+    final chObj = findChannelById(channelId);
+    if (chObj != null && chObj.isForum) {
+      messagesNotifier.value = const [];
+      return;
+    }
 
     final cached = _messageCache[channelId];
     if (cached != null) {
-      // Refresh LRU order
       _messageCache.remove(channelId);
       _messageCache[channelId] = cached;
       messagesNotifier.value = List.unmodifiable(cached);
+      if (markRead && cached.isNotEmpty) {
+        _markChannelRead(channelId, messageId: cached.first.id);
+      }
       return;
     }
 
@@ -514,9 +653,13 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
     try {
       final fetched = await _rest!.getChannelMessages(channelId, limit: 50);
+      _cacheMessageAuthorsInGuild(fetched);
       _putChannelCache(channelId, fetched);
       if (_selectedChannelId == channelId) {
         messagesNotifier.value = List.unmodifiable(fetched);
+        if (markRead && fetched.isNotEmpty) {
+          _markChannelRead(channelId, messageId: fetched.first.id);
+        }
       }
     } catch (_) {
       if (_selectedChannelId == channelId) {
@@ -527,6 +670,60 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         loadingMessagesNotifier.value = false;
       }
     }
+  }
+
+  void _cacheMessageAuthorsInGuild(Iterable<DiscordMessage> msgs) {
+    for (final m in msgs) {
+      final gId = m.guildId ?? _selectedGuildId;
+      if (gId != null &&
+          _guilds.containsKey(gId) &&
+          (m.memberRoleIds.isNotEmpty || m.memberNick != null)) {
+        final g = _guilds[gId]!;
+        final nextMembers = Map<String, DiscordMember>.from(g.cachedMembers);
+        nextMembers[m.author.id] = DiscordMember(
+          user: m.author,
+          nick: m.memberNick,
+          roleIds: m.memberRoleIds,
+        );
+        _guilds[gId] = g.copyWith(cachedMembers: nextMembers);
+      }
+    }
+  }
+
+  Future<List<DiscordChannel>> fetchForumThreads(
+    DiscordChannel forumChannel,
+  ) async {
+    final g = selectedGuild;
+    final active = <DiscordChannel>[];
+    if (g != null) {
+      active.addAll(
+        g.channels.where((c) => c.isThread && c.parentId == forumChannel.id),
+      );
+    }
+    if (_rest != null) {
+      try {
+        final archived = await _rest!.getArchivedPublicThreads(
+          forumChannel.id,
+          guildId: forumChannel.guildId,
+        );
+        final existingIds = active.map((t) => t.id).toSet();
+        for (final t in archived) {
+          if (!existingIds.contains(t.id)) {
+            active.add(t);
+          }
+        }
+        // Merge discovered threads into guild so selectChannel can resolve them
+        if (g != null && archived.isNotEmpty) {
+          final mergedCh = List<DiscordChannel>.from(g.channels);
+          final gIds = mergedCh.map((c) => c.id).toSet();
+          for (final t in archived) {
+            if (!gIds.contains(t.id)) mergedCh.add(t);
+          }
+          _guilds[g.id] = g.copyWith(channels: mergedCh);
+        }
+      } catch (_) {}
+    }
+    return active;
   }
 
   Future<void> loadOlderMessages() async {
@@ -544,12 +741,12 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         limit: 50,
       );
       if (older.isNotEmpty) {
+        _cacheMessageAuthorsInGuild(older);
         final existingIds = current.map((m) => m.id).toSet();
         final merged = <DiscordMessage>[
           ...current,
           ...older.where((m) => !existingIds.contains(m.id)),
         ];
-        // Cap in-memory history to 200 messages in Eco mode to keep RAM flat
         final maxKeep = _ecoSettings.ecoPowerSaving ? 180 : 350;
         final trimmed =
             merged.length > maxKeep ? merged.sublist(0, maxKeep) : merged;
@@ -580,6 +777,85 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Built-in commands matching VencordDBCPlugin/index.tsx (/ping, /purge, /switch shard, /switch guild)
+  Future<String?> tryExecuteBuiltInCommand(String rawInput) async {
+    final trimmed = rawInput.trim();
+    if (!trimmed.startsWith('/')) return null;
+    final chId = _selectedChannelId;
+    if (chId == null || _rest == null) return null;
+
+    final parts = trimmed.split(RegExp(r'\s+'));
+    final cmd = parts.first.toLowerCase();
+
+    if (cmd == '/ping') {
+      await sendChatMessage(content: 'Pong!');
+      return 'Pong!';
+    }
+
+    if (cmd == '/purge') {
+      final amount = parts.length >= 2 ? (int.tryParse(parts[1]) ?? -1) : -1;
+      if (amount < 2 || amount > 100) {
+        throw const DiscordApiException(400, '/purge 數量必須介於 2 到 100 之間');
+      }
+      final cutoffMs =
+          DateTime.now().millisecondsSinceEpoch - (14 * 86400 * 1000);
+      final minSnowflake =
+          BigInt.from(cutoffMs - 1420070400000) << 22;
+      final recent = await _rest!.getChannelMessages(chId, limit: amount);
+      final validIds = recent
+          .where((m) => (BigInt.tryParse(m.id) ?? BigInt.zero) > minSnowflake)
+          .map((m) => m.id)
+          .toList();
+      if (validIds.length < 2) {
+        throw const DiscordApiException(
+            400, '可批次刪除的訊息不足 2 則（僅能刪除 14 天內的訊息）');
+      }
+      await _rest!.bulkDeleteMessages(chId, validIds);
+      final idSet = validIds.toSet();
+      if (_messageCache.containsKey(chId)) {
+        final next =
+            _messageCache[chId]!.where((m) => !idSet.contains(m.id)).toList();
+        _messageCache[chId] = next;
+        if (_selectedChannelId == chId) {
+          messagesNotifier.value = List.unmodifiable(next);
+        }
+      }
+      return '已批次刪除 ${validIds.length} 則訊息';
+    }
+
+    if (cmd == '/switch' && parts.length >= 3) {
+      final sub = parts[1].toLowerCase();
+      if (sub == 'shard') {
+        final id = int.tryParse(parts[2]) ?? -1;
+        if (id < 0 || id >= totalShards) {
+          throw DiscordApiException(
+              400, 'Shard ID 必須介於 0 到 ${totalShards - 1} 之間');
+        }
+        await _gateway?.switchShard(id);
+        return '已切換至 Shard $id / $totalShards';
+      } else if (sub == 'guild') {
+        final gId = parts[2];
+        final gBig = BigInt.tryParse(gId);
+        if (gBig == null) {
+          throw const DiscordApiException(400, '無效的伺服器 ID');
+        }
+        if (totalShards > 1) {
+          final targetShard =
+              ((gBig >> 22) % BigInt.from(totalShards)).toInt();
+          if (targetShard != currentShard) {
+            await _gateway?.switchShard(targetShard);
+          }
+        }
+        if (_guilds.containsKey(gId)) {
+          await selectGuild(gId);
+        }
+        return '已切換至伺服器 $gId';
+      }
+    }
+
+    return null;
+  }
+
   Future<DiscordMessage> sendChatMessage({
     String content = '',
     String? replyToMessageId,
@@ -600,13 +876,23 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       fileName: fileName,
     );
     _insertOrUpdateMessage(chId, sent, isNew: true);
+    _markChannelRead(chId, messageId: sent.id);
     return sent;
   }
 
-  Future<void> editChatMessage(String messageId, String newContent) async {
+  Future<void> editChatMessage(
+    String messageId, {
+    String? newContent,
+    List<DiscordEmbed>? embeds,
+  }) async {
     final chId = _selectedChannelId;
     if (chId == null || _rest == null) return;
-    final updated = await _rest!.editMessage(chId, messageId, content: newContent);
+    final updated = await _rest!.editMessage(
+      chId,
+      messageId,
+      content: newContent,
+      embeds: embeds,
+    );
     _insertOrUpdateMessage(chId, updated, isNew: false);
   }
 
@@ -629,7 +915,6 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     } else {
       await _rest!.addReaction(message.channelId, message.id, idStr);
     }
-    // Optimistically update local reaction count for instant smoothness
     final rxns = List<DiscordReaction>.from(message.reactions);
     final idx = rxns.indexWhere((r) => r.emoji.apiIdentifier == idStr);
     if (currentlyReactedByMe) {
@@ -666,21 +951,36 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<DiscordChannel> openDmWithUser(String userId) async {
+  Future<DiscordChannel> openDmWithUser(
+    String userId, {
+    bool targetIsBot = false,
+  }) async {
     if (_rest == null) {
       throw const DiscordApiException(400, '尚未登入');
     }
+    if (targetIsBot) {
+      throw const DiscordApiException(400, '無法傳送私人訊息給其他機器人');
+    }
+    if (userId.trim() == _activeAccount?.id) {
+      throw const DiscordApiException(400, '無法與自己開啟私訊');
+    }
     final dm = await _rest!.createDirectMessage(userId);
+    if (dm.dmRecipient?.bot == true) {
+      throw const DiscordApiException(400, '無法傳送私人訊息給其他機器人');
+    }
     _dmChannels.remove(dm.id);
-    // Insert at top of DM map
     final existing = Map<String, DiscordChannel>.from(_dmChannels);
     _dmChannels
       ..clear()
       ..[dm.id] = dm
       ..addAll(existing);
+    _syncChannelReadBaseline([dm]);
     await _savePersistedDmChannels();
+    if (_selectedGuildId != null) {
+      _lastNonDmGuildId = _selectedGuildId;
+    }
     _selectedGuildId = null;
-    await selectChannel(dm.id);
+    await selectChannel(dm.id, markRead: true);
     return dm;
   }
 
@@ -711,21 +1011,6 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  void clearMemoryCaches() {
-    PaintingBinding.instance.imageCache.clear();
-    PaintingBinding.instance.imageCache.clearLiveImages();
-    final activeCh = _selectedChannelId;
-    final keep = activeCh != null ? _messageCache[activeCh] : null;
-    _messageCache.clear();
-    if (activeCh != null && keep != null) {
-      _messageCache[activeCh] = keep;
-    }
-    notifyListeners();
-  }
-
-  // ==========================================================
-  // Gateway Real-Time Event Handling (Micro-batched for 120fps)
-  // ==========================================================
   void _handleGatewayDispatch(GatewayDispatchEvent event) {
     gatewayEventsCountNotifier.value = gatewayEventsCountNotifier.value + 1;
     final data = event.data;
@@ -738,6 +1023,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             currentBotUserId: _activeAccount?.id,
           );
           _guilds[parsed.id] = parsed;
+          _syncChannelReadBaseline(parsed.channels);
           if (_selectedGuildId == null && _dmChannels.isEmpty) {
             unawaited(selectGuild(parsed.id));
           } else if (_selectedGuildId == parsed.id &&
@@ -758,6 +1044,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             _guilds[id] = prev.copyWith(
               name: updated.name,
               icon: updated.icon,
+              banner: updated.banner,
+              features: updated.features.isNotEmpty
+                  ? updated.features
+                  : prev.features,
               ownerId: updated.ownerId,
               roles: updated.roles.isNotEmpty ? updated.roles : prev.roles,
               emojis: updated.emojis.isNotEmpty ? updated.emojis : prev.emojis,
@@ -786,6 +1076,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       case 'CHANNEL_UPDATE':
         if (data is Map<String, dynamic>) {
           final ch = DiscordChannel.fromJson(data);
+          _syncChannelReadBaseline([ch]);
           if (ch.isDm) {
             _dmChannels[ch.id] = ch;
             unawaited(_savePersistedDmChannels());
@@ -810,6 +1101,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           final gId = data['guild_id']?.toString();
           if (chId != null) {
             _dmChannels.remove(chId);
+            _unreadChannelIds.remove(chId);
             if (gId != null && _guilds.containsKey(gId)) {
               final g = _guilds[gId]!;
               _guilds[gId] = g.copyWith(
@@ -828,23 +1120,34 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       case 'MESSAGE_CREATE':
         if (data is Map<String, dynamic>) {
           final msg = DiscordMessage.fromJson(data);
-          // Auto-capture incoming Direct Messages into persistent local DM store!
+          _cacheMessageAuthorsInGuild([msg]);
+
           final botId = _activeAccount?.id;
-          if (msg.guildId == null && msg.author.id != botId) {
-            if (!_dmChannels.containsKey(msg.channelId)) {
-              _dmChannels[msg.channelId] = DiscordChannel(
-                id: msg.channelId,
-                name: msg.author.displayName,
-                type: 1,
-                lastMessageId: msg.id,
-                recipients: [msg.author],
-              );
-            } else {
-              _dmChannels[msg.channelId] = _dmChannels[msg.channelId]!
-                  .copyWith(lastMessageId: msg.id);
+          // Update lastMessageId on guild or DM channel
+          if (msg.guildId == null) {
+            if (msg.author.id != botId) {
+              if (!_dmChannels.containsKey(msg.channelId)) {
+                _dmChannels[msg.channelId] = DiscordChannel(
+                  id: msg.channelId,
+                  name: msg.author.displayName,
+                  type: 1,
+                  lastMessageId: msg.id,
+                  recipients: [msg.author],
+                );
+              } else {
+                _dmChannels[msg.channelId] = _dmChannels[msg.channelId]!
+                    .copyWith(lastMessageId: msg.id);
+              }
+              unawaited(_savePersistedDmChannels());
             }
-            unawaited(_savePersistedDmChannels());
-            _scheduleCoalescedNotify();
+          } else if (_guilds.containsKey(msg.guildId)) {
+            final g = _guilds[msg.guildId]!;
+            final chList = List<DiscordChannel>.from(g.channels);
+            final cIdx = chList.indexWhere((c) => c.id == msg.channelId);
+            if (cIdx != -1) {
+              chList[cIdx] = chList[cIdx].copyWith(lastMessageId: msg.id);
+              _guilds[g.id] = g.copyWith(channels: chList);
+            }
           }
 
           if (botId != null && msg.author.id != botId) {
@@ -857,16 +1160,24 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               if (_notifications.length > 50) {
                 _notifications.removeRange(50, _notifications.length);
               }
+              _unreadNotificationCount++;
               _scheduleCoalescedNotify();
             }
           }
+
           _insertOrUpdateMessage(msg.channelId, msg, isNew: true);
-          if (msg.channelId != _selectedChannelId &&
-              msg.author.id != _activeAccount?.id) {
+
+          final isOpenNow =
+              _isActivelyViewingChat && _selectedChannelId == msg.channelId;
+          if (isOpenNow || msg.author.id == botId) {
+            _lastReadMessageId[msg.channelId] = msg.id;
+            _scheduleSaveReadState();
+            if (msg.channelId == _selectedChannelId) {
+              typingBannerNotifier.value = null;
+            }
+          } else {
             _unreadChannelIds.add(msg.channelId);
             _scheduleCoalescedNotify();
-          } else if (msg.channelId == _selectedChannelId) {
-            typingBannerNotifier.value = null;
           }
         }
         break;
@@ -875,7 +1186,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         if (data is Map<String, dynamic>) {
           final chId = data['channel_id']?.toString();
           final msgId = data['id']?.toString();
-          if (chId != null && msgId != null && _messageCache.containsKey(chId)) {
+          if (chId != null &&
+              msgId != null &&
+              _messageCache.containsKey(chId)) {
             final list = _messageCache[chId]!;
             final idx = list.indexWhere((m) => m.id == msgId);
             if (idx != -1) {
@@ -939,7 +1252,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               final name = member?['nick'] as String? ??
                   user?['global_name'] as String? ??
                   user?['username'] as String? ??
-                  '有人';
+                  'Someone';
               typingBannerNotifier.value = '$name 正在輸入...';
               _typingClearTimer?.cancel();
               _typingClearTimer = Timer(const Duration(seconds: 7), () {
@@ -971,7 +1284,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     if (idx >= 0) {
       list[idx] = msg;
     } else if (isNew) {
-      list.insert(0, msg); // Newest at index 0 for reverse: true ListView
+      list.insert(0, msg);
       final maxKeep = _ecoSettings.ecoPowerSaving ? 150 : 300;
       if (list.length > maxKeep) {
         list.removeRange(maxKeep, list.length);
@@ -993,8 +1306,6 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Coalesces structural UI notifications within a 16ms frame budget so burst
-  /// Gateway events (like initial GUILD_CREATE flood) never drop frames!
   void _scheduleCoalescedNotify() {
     if (_coalesceNotifyTimer?.isActive ?? false) return;
     _coalesceNotifyTimer = Timer(const Duration(milliseconds: 16), () {

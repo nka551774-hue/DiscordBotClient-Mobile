@@ -109,11 +109,21 @@ class DiscordRestClient {
     }
     String? appId;
     String? appDescription;
+    int appFlags = 0;
+    int approxGuilds = 0;
     try {
-      final appRaw = await _request('GET', '/oauth2/applications/@me')
-          as Map<String, dynamic>;
+      // Exact endpoint used by DiscordBotClient/src/AppCore/IPCManager.ts:
+      final appRaw = await _request(
+        'GET',
+        '/applications/@me',
+        query: {'with_counts': 'true'},
+      ) as Map<String, dynamic>;
       appId = appRaw['id']?.toString();
       appDescription = appRaw['description'] as String?;
+      appFlags = appRaw['flags'] as int? ?? 0;
+      approxGuilds = (appRaw['bot_approximate_guild_count'] as int?) ??
+          (appRaw['approximate_guild_count'] as int?) ??
+          0;
     } catch (_) {
       appId = meRaw['id']?.toString();
     }
@@ -131,6 +141,9 @@ class DiscordRestClient {
           ? appDescription.trim()
           : (meRaw['bio'] as String?),
       applicationId: appId ?? meRaw['id']?.toString(),
+      publicFlags: meRaw['public_flags'] as int? ?? (meRaw['flags'] as int? ?? 0),
+      applicationFlags: appFlags,
+      approximateGuildCount: approxGuilds,
     );
   }
 
@@ -279,14 +292,48 @@ class DiscordRestClient {
   Future<DiscordMessage> editMessage(
     String channelId,
     String messageId, {
-    required String content,
+    String? content,
+    List<DiscordEmbed>? embeds,
   }) async {
+    final body = <String, dynamic>{};
+    if (content != null) body['content'] = content;
+    if (embeds != null) {
+      body['embeds'] = embeds.map((e) => e.toJson()).toList();
+    }
     final res = await _request(
       'PATCH',
       '/channels/$channelId/messages/$messageId',
-      body: {'content': content},
+      body: body,
     ) as Map<String, dynamic>;
     return DiscordMessage.fromJson(res);
+  }
+
+  /// Bulk deletes 2..100 messages younger than 14 days (used by /purge command).
+  Future<void> bulkDeleteMessages(
+    String channelId,
+    List<String> messageIds,
+  ) async {
+    await _request(
+      'POST',
+      '/channels/$channelId/messages/bulk-delete',
+      body: {'messages': messageIds},
+    );
+  }
+
+  /// Fetches archived public threads in a channel or forum.
+  Future<List<DiscordChannel>> getArchivedPublicThreads(
+    String channelId, {
+    String? guildId,
+  }) async {
+    final res = await _request(
+      'GET',
+      '/channels/$channelId/threads/archived/public',
+    ) as Map<String, dynamic>;
+    final threads = res['threads'] as List<dynamic>? ?? const [];
+    return threads
+        .whereType<Map<String, dynamic>>()
+        .map((t) => DiscordChannel.fromJson(t, guildId: guildId))
+        .toList();
   }
 
   Future<void> deleteMessage(String channelId, String messageId) async {

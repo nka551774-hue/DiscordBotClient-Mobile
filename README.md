@@ -1,24 +1,25 @@
 # DiscordBotClient Mobile (Android APK & iOS IPA)
 
-參考 [aiko-chan-ai/DiscordBotClient](https://github.com/aiko-chan-ai/DiscordBotClient) 打造的手機版 Discord 機器人客戶端。完整還原原版 `DiscordBotClient` 的機器人 Token 登入介面（`Welcome back!` / `BOT TOKEN`）以及官方 Discord 手機版四大分頁介面（`Servers`、`Messages`、`Notifications`、`You`），底層採用 Flutter AOT 原生 ARM64 機器碼直連 Discord API v10 與 Zlib 壓縮 Gateway，在維持原汁原味操作體驗的同時將耗能壓至最低並支援 120Hz 流暢滾動。
+參考 [aiko-chan-ai/DiscordBotClient](https://github.com/aiko-chan-ai/DiscordBotClient) 與 [aiko-chan-ai/VencordDBCPlugin](https://github.com/aiko-chan-ai/VencordDBCPlugin) 原始碼打造的原生級手機版 Discord 機器人客戶端。完整對齊原版 `DiscordBotClient` 的機器人登入機制與最新 Discord 手機版三欄跟手滑動介面，底層採用 Flutter AOT 原生 ARM64 機器碼直連 Discord API v10 與 Zlib 串流壓縮 Gateway，兼具最低耗能與 120Hz 流暢度。
 
 ---
 
-## 介面與功能說明
+## 核心機制與互動設計
 
-### 原版介面還原
-- **登入介面**：與 `aiko-chan-ai/DiscordBotClient` 完全一致的星夜漸層背景、`Welcome back!` 登入卡片、`BOT TOKEN` 密碼輸入框，以及多帳號切換 (`Choose an account` / `< Go back`)。
-- **官方 Discord 手機版佈局**：
-  - **Servers**：左側垂直伺服器圖示列與圓角頻道列表（支援分類摺疊與未讀提示）。
-  - **Messages**：私人訊息列表、搜尋列，以及與 `VencordDBCPlugin` 一致的 `New Message`（透過 User ID 開啟私訊）對話框。
-  - **Notifications**：集中顯示機器人收到的提及、回覆與私訊通知。
-  - **You**：機器人個人檔案頁、上線狀態切換（Online / Idle / Do Not Disturb / Invisible 與活動狀態）、帳號切換，以及 `Settings`（支援切換 Discord `Dark` 與 `Midnight` 純黑模式）。
-- **原版聊天室體驗**：全螢幕滑入式聊天頁（支援手機返回手勢）、左滑訊息快速回覆、長按圓形快速表情反應列、釘選訊息檢視、成員名單抽屜，以及輸入框內嵌原版 `Create Embed` 按鈕。
+### 原版 Discord 手機版互動體驗
+- **三欄 120fps 跟手滑動架構**：
+  - **左側導覽欄**：伺服器圓角矩形圖示列、頂部私人訊息入口、圓角頻道面板與底部乾淨懸浮 You Bar（橫滑 You Bar 可快速在伺服器與私訊間切換）。
+  - **中間聊天欄**：支援右滑返回頻道列表、訊息左滑彈性回覆、跨日時間分隔線、身分組名稱染色、論壇頻道貼文瀏覽，以及快速回到最新訊息懸浮鈕。
+  - **右側詳情與成員欄**：點擊頻道標題或從右側邊緣左滑拉出，依置頂身分組 (`hoist`) 分組並染色顯示成員名單，整合釘選訊息、討論串、邀請連結與頻道設定。
+- **精準未讀狀態追蹤**：持久化記錄各頻道 `lastReadMessageId`，僅在收到未讀新訊息時於頻道與伺服器左側顯示白色未讀點，讀取後即時消除。
+- **真實帳號與伺服器屬性渲染**：自動依據機器人真實 `public_flags` 與 `application.flags` 渲染官方徽章與 `APP` / 已驗證標記，並依據伺服器真實 `features` 判斷是否為社群或驗證伺服器，不混入任何假裝飾。
 
-### 底層低耗能與流暢度最佳化
-1. **零 WebView / 零本地背景伺服器**：原生 ARM64 機器碼直接連線 Discord 官方端點，閒置時零背景重繪。
-2. **背景自動休眠與快速恢復**：切換至背景自動休眠 WebSocket 降低無線電耗電，返回前景即時透過 `RESUME` 恢復連線。
-3. **120fps 局部更新與縮圖快取限制**：採用 `RepaintBoundary`、`ValueNotifier` 局部更新與 WebP 縮圖解碼限制，iOS 已啟用 `CADisableMinimumFrameDurationOnPhone` 支援 120Hz ProMotion。
+### 對齊 DiscordBotClient 原始碼功能
+- **原版登入介面**：還原 `AuthBoxTokenLogin` 的 `Welcome back!` / `BOT TOKEN` 登入卡片，以及 `Choose an account` / `< Go back` 多帳號切換。
+- **自動偵測特權 Intents 與分片 (Sharding)**：登入時透過 `/applications/@me` 自動讀取機器人已啟用的特權 Intents 旗標並計算建議分片數。
+- **新增與編輯 Embed**：輸入框內嵌原版 SVG Embed 按鈕開啟 `Create Embed`，長按機器人自己發送的 Embed 訊息亦可直接開啟 `Edit Embed` 修改。
+- **內建斜線指令**：支援原版 `/ping`、`/purge <2-100>`（批次刪除 14 天內訊息）、`/switch shard <id>` 與 `/switch guild <id>`。
+- **完整狀態控制**：支援切換線上、閒置、請勿打擾、隱形，以及透過 Gateway `type: 4` 設定自訂狀態文字或活動狀態。
 
 ---
 

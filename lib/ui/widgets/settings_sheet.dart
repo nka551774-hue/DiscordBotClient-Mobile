@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
 
-/// 1:1 recreation of Screenshot 1 (media_1795696333975_c51ef427.jpg):
-/// Latest 2025/2026 Discord Mobile Modal "You" Profile Sheet with:
-/// - Banner + top-left rounded X close button
-/// - Overlapping Avatar with Status Badge + Thought-Bubble "+ 新增狀態" pill
-/// - Username + chevron (Switch Accounts) + tag pill + Badges row
-/// - Full-width Blurple "編輯個人資料" button
-/// - 4 Sub-tabs: 首頁 | 公告欄 | 動態 | 願望清單
-/// - "Orbs 餘額" card & "簡介" section
-/// - Floating 4-icon bottom dock: 任務 | 商店 | Nitro | 設定
+/// Clean, authentic Discord Mobile "You" Profile Modal Sheet —
+/// renders ONLY real account data (real banner/accentColor, real Discord badges
+/// from publicFlags/applicationFlags, real bot description, real creation date)
+/// without any hardcoded user-specific profile decorations!
 void showYouProfileModal(
   BuildContext context,
   BotClientController controller,
@@ -26,52 +22,45 @@ void showYouProfileModal(
   );
 }
 
-class _YouProfileModalSheet extends StatefulWidget {
+class _YouProfileModalSheet extends StatelessWidget {
   final BotClientController controller;
 
   const _YouProfileModalSheet({required this.controller});
 
-  @override
-  State<_YouProfileModalSheet> createState() => _YouProfileModalSheetState();
-}
-
-class _YouProfileModalSheetState extends State<_YouProfileModalSheet> {
-  int _subTab = 0;
-
-  static String statusLabelZh(String st) {
-    switch (st) {
-      case 'idle':
-        return '閒置';
-      case 'dnd':
-        return '請勿打擾';
-      case 'invisible':
-        return '隱形';
-      default:
-        return '線上';
-    }
+  Color _deriveFallbackBannerColor(String id) {
+    const palette = [
+      Color(0xFF5865F2),
+      Color(0xFF3B4252),
+      Color(0xFF2B5B84),
+      Color(0xFF237A57),
+      Color(0xFF5E3B76),
+    ];
+    final idx = (int.tryParse(id.substring(id.length.clamp(0, 4) > 3 ? id.length - 3 : 0)) ?? 0) %
+        palette.length;
+    return palette[idx];
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.controller,
+      listenable: controller,
       builder: (context, _) {
-        final ctrl = widget.controller;
-        final acc = ctrl.activeAccount;
+        final acc = controller.activeAccount;
         if (acc == null) return const SizedBox.shrink();
 
-        final p = DiscordPalette(oled: ctrl.ecoSettings.oledBlackMode);
+        final p = DiscordPalette(oled: controller.ecoSettings.oledBlackMode);
         final sheetBg = p.profileBg;
         final bannerColor = acc.accentColor != null
             ? Color(0xFF000000 | acc.accentColor!)
-            : const Color(0xFFCAA43B); // Warm Discord gold matching Screenshot 1
+            : _deriveFallbackBannerColor(acc.id);
         final bannerUrl = acc.bannerUrl(size: 600);
+        final badges = acc.realBadges;
 
         final created = snowflakeCreatedAt(acc.id);
         final createdStr =
             '${created.year}年${created.month}月${created.day}日';
 
-        final height = MediaQuery.of(context).size.height * 0.93;
+        final height = MediaQuery.of(context).size.height * 0.90;
 
         return Container(
           height: height,
@@ -81,463 +70,59 @@ class _YouProfileModalSheetState extends State<_YouProfileModalSheet> {
                 const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           clipBehavior: Clip.antiAlias,
-          child: Stack(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 36),
             children: [
-              // Main Scrollable Profile Content
-              ListView(
-                padding: const EdgeInsets.only(bottom: 110),
-                children: [
-                  // 1. Top Banner + Overlapping Avatar + Thought-Bubble Status Pill
-                  SizedBox(
-                    height: 184,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        // Banner
-                        Container(
-                          height: 132,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: bannerColor,
-                            image: bannerUrl != null
-                                ? DecorationImage(
-                                    image: NetworkImage(bannerUrl),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                        ),
-
-                        // Top-left Rounded Close X Button (matching Screenshot 1)
-                        Positioned(
-                          top: 14,
-                          left: 14,
-                          child: GestureDetector(
-                            onTap: () => Navigator.of(context).pop(),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: const Color(0x66000000),
-                                borderRadius: BorderRadius.circular(11),
-                              ),
-                              child: const Icon(
-                                Icons.close_rounded,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // Overlapping Avatar + Status Badge
-                        Positioned(
-                          left: 16,
-                          bottom: 0,
-                          child: GestureDetector(
-                            onTap: () =>
-                                showDiscordStatusSheet(context, ctrl),
-                            child: Stack(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: sheetBg,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: CircleAvatar(
-                                    radius: 42,
-                                    backgroundImage: NetworkImage(
-                                      acc.avatarUrl(size: 128),
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 3,
-                                  bottom: 3,
-                                  child: DiscordStatusBadge(
-                                    status: ctrl.botStatus,
-                                    size: 26,
-                                    borderColor: sheetBg,
-                                    borderWidth: 4.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // Thought-bubble dots + Custom Status Pill ("+ 新增狀態...")
-                        Positioned(
-                          left: 108,
-                          top: 108,
-                          child: Container(
-                            width: 9,
-                            height: 9,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF1E1F26),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          left: 118,
-                          top: 116,
-                          child: Container(
-                            width: 14,
-                            height: 14,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF1E1F26),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          left: 112,
-                          bottom: 6,
-                          right: 18,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: GestureDetector(
-                              onTap: () =>
-                                  showDiscordStatusSheet(context, ctrl),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 13, vertical: 9),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E1F26),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                      color: const Color(0xFF2B2D36),
-                                      width: 0.8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.add_circle_rounded,
-                                      size: 17,
-                                      color: Colors.white,
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Flexible(
-                                      child: Text(
-                                        ctrl.botActivityName.isEmpty
-                                            ? '新增狀態'
-                                            : ctrl.botActivityName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: p.textPrimary,
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // 2. Identity, Tag Pill & Badges Strip
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // DisplayName + Chevron -> Switch Accounts
-                        GestureDetector(
-                          onTap: () =>
-                              showSwitchAccountsSheet(context, ctrl),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  acc.displayName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: p.textPrimary,
-                                    fontSize: 23,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: p.textSecondary,
-                                size: 22,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-
-                        // Username + Tag Pill
-                        Row(
-                          children: [
-                            Text(
-                              acc.username,
-                              style: TextStyle(
-                                color: p.textSecondary,
-                                fontSize: 14.5,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2.5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1E1F26),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                    color: const Color(0xFF2B2D36),
-                                    width: 0.6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: const [
-                                  Icon(
-                                    Icons.bolt_rounded,
-                                    size: 13,
-                                    color: Color(0xFFB784F7),
-                                  ),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'BOT',
-                                    style: TextStyle(
-                                      color: Color(0xFFE3E5E8),
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Badges Pill Row
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1A1B22),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: const [
-                              Icon(Icons.speed_rounded,
-                                  size: 16, color: Color(0xFF8EA1E1)),
-                              SizedBox(width: 7),
-                              Icon(Icons.sports_esports_rounded,
-                                  size: 16, color: Color(0xFFF0B232)),
-                              SizedBox(width: 7),
-                              Icon(Icons.code_rounded,
-                                  size: 16, color: Color(0xFF23A55A)),
-                              SizedBox(width: 7),
-                              Icon(Icons.verified_rounded,
-                                  size: 16, color: Color(0xFF5865F2)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // 3. Full-Width Blurple "編輯個人資料" Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: DiscordPalette.blurple,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(11),
-                              ),
-                            ),
-                            onPressed: () =>
-                                showDiscordStatusSheet(context, ctrl),
-                            icon: const Icon(Icons.edit_rounded,
-                                size: 17, color: Colors.white),
-                            label: const Text(
-                              '編輯個人資料',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // 4. Four Sub-Tabs: 首頁 | 公告欄 | 動態 | 願望清單
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border(
-                          bottom: BorderSide(color: p.border, width: 1)),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildProfileSubTab('首頁', 0, p),
-                        _buildProfileSubTab('公告欄', 1, p),
-                        _buildProfileSubTab('動態', 2, p),
-                        _buildProfileSubTab('願望清單', 3, p),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 5. Sub-Tab Body Content
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: _subTab == 0
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Orbs 餘額 Card (matching Screenshot 1)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF16171D),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                      color: const Color(0xFF22232B),
-                                      width: 0.7),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      'Orbs 餘額',
-                                      style: TextStyle(
-                                        color: p.textPrimary,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    Icon(
-                                      Icons.more_horiz_rounded,
-                                      color: p.textSecondary,
-                                      size: 20,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-
-                              // 簡介 (About Me)
-                              Text(
-                                '簡介',
-                                style: TextStyle(
-                                  color: p.textSecondary,
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                (acc.bio != null && acc.bio!.isNotEmpty)
-                                    ? acc.bio!
-                                    : 'Discord 機器人帳號 • 目前狀態：${statusLabelZh(ctrl.botStatus)}\n加入 Discord 時間：$createdStr\n已連線伺服器數量：${ctrl.guilds.length}',
-                                style: TextStyle(
-                                  color: p.textPrimary,
-                                  fontSize: 14.5,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          )
-                        : Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 32),
-                            child: Center(
-                              child: Text(
-                                '尚無內容',
-                                style: TextStyle(
-                                    color: p.textMuted, fontSize: 14),
-                              ),
-                            ),
-                          ),
-                  ),
-                ],
-              ),
-
-              // 6. Floating 4-Icon Bottom Dock: 任務 | 商店 | Nitro | 設定 (matching Screenshot 1!)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 18,
-                child: SafeArea(
-                  top: false,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
+              // 1. Banner + Top Bar Controls + Overlapping Avatar + Status Thought Bubble
+              SizedBox(
+                height: 184,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      height: 132,
+                      width: double.infinity,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1C1D24),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                            color: const Color(0xFF2C2E3A), width: 0.9),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x88000000),
-                            blurRadius: 20,
-                            offset: Offset(0, 6),
-                          ),
-                        ],
+                        color: bannerColor,
+                        image: bannerUrl != null
+                            ? DecorationImage(
+                                image: NetworkImage(bannerUrl),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
                       ),
+                    ),
+
+                    // Top-left Close Button
+                    Positioned(
+                      top: 14,
+                      left: 14,
+                      child: _bannerCircleButton(
+                        icon: Icons.close_rounded,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+
+                    // Top-right Switch Accounts & Settings Gear (Standard Discord Mobile)
+                    Positioned(
+                      top: 14,
+                      right: 14,
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          _dockButton(
-                            icon: Icons.workspace_premium_outlined,
-                            label: '任務',
-                            p: p,
-                            onTap: () {},
+                          _bannerCircleButton(
+                            icon: Icons.swap_horiz_rounded,
+                            onTap: () =>
+                                showSwitchAccountsSheet(context, controller),
                           ),
-                          const SizedBox(width: 24),
-                          _dockButton(
-                            icon: Icons.storefront_outlined,
-                            label: '商店',
-                            p: p,
-                            onTap: () {},
-                          ),
-                          const SizedBox(width: 24),
-                          _dockButton(
-                            icon: Icons.speed_rounded,
-                            label: 'Nitro',
-                            p: p,
-                            onTap: () {},
-                          ),
-                          const SizedBox(width: 24),
-                          _dockButton(
+                          const SizedBox(width: 8),
+                          _bannerCircleButton(
                             icon: Icons.settings_rounded,
-                            label: '設定',
-                            p: p,
                             onTap: () {
                               Navigator.of(context).pop();
                               Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) => DiscordSettingsScreen(
-                                      controller: ctrl),
+                                      controller: controller),
                                 ),
                               );
                             },
@@ -545,7 +130,354 @@ class _YouProfileModalSheetState extends State<_YouProfileModalSheet> {
                         ],
                       ),
                     ),
-                  ),
+
+                    // Overlapping Avatar + Status Badge
+                    Positioned(
+                      left: 16,
+                      bottom: 0,
+                      child: GestureDetector(
+                        onTap: () =>
+                            showDiscordStatusSheet(context, controller),
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: sheetBg,
+                                shape: BoxShape.circle,
+                              ),
+                              child: CircleAvatar(
+                                radius: 42,
+                                backgroundImage: NetworkImage(
+                                  acc.avatarUrl(size: 128),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 3,
+                              bottom: 3,
+                              child: DiscordStatusBadge(
+                                status: controller.botStatus,
+                                size: 26,
+                                borderColor: sheetBg,
+                                borderWidth: 4.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Discord Thought-Bubble Custom Status Pill
+                    Positioned(
+                      left: 108,
+                      top: 108,
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: p.cardBg,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 118,
+                      top: 116,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: p.cardBg,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 112,
+                      bottom: 6,
+                      right: 18,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: () =>
+                              showDiscordStatusSheet(context, controller),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 13, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: p.cardBg,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: p.border, width: 0.8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  controller.botActivityName.isEmpty
+                                      ? Icons.add_circle_rounded
+                                      : Icons.chat_bubble_outline_rounded,
+                                  size: 16,
+                                  color: p.textSecondary,
+                                ),
+                                const SizedBox(width: 7),
+                                Flexible(
+                                  child: Text(
+                                    controller.botActivityName.isEmpty
+                                        ? '新增狀態'
+                                        : controller.botActivityName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: controller.botActivityName.isEmpty
+                                          ? p.textSecondary
+                                          : p.textPrimary,
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // 2. Identity, Official APP Badge, Real Badges (only if earned!)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () =>
+                          showSwitchAccountsSheet(context, controller),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        children: [
+                          Text(
+                            acc.displayName,
+                            style: TextStyle(
+                              color: p.textPrimary,
+                              fontSize: 23,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          // Official Discord APP / Verified APP Pill
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: DiscordPalette.blurple,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (acc.isVerifiedBot) ...[
+                                  const Icon(Icons.check_rounded,
+                                      size: 12, color: Colors.white),
+                                  const SizedBox(width: 2),
+                                ],
+                                const Text(
+                                  'APP',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: p.textSecondary,
+                            size: 22,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      acc.tag,
+                      style: TextStyle(
+                        color: p.textSecondary,
+                        fontSize: 14.5,
+                      ),
+                    ),
+
+                    // Real Discord Badges from UserBadges.ts (ONLY shown if account actually has badges!)
+                    if (badges.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: p.cardBg,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Wrap(
+                          spacing: 6,
+                          children: badges.map((b) {
+                            return Tooltip(
+                              message: b.description,
+                              child: Image.network(
+                                b.iconUrl,
+                                width: 20,
+                                height: 20,
+                                cacheWidth: 40,
+                                errorBuilder: (_, __, ___) =>
+                                    const SizedBox.shrink(),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // Edit Status / Presence Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 42,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DiscordPalette.blurple,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(21),
+                          ),
+                        ),
+                        onPressed: () =>
+                            showDiscordStatusSheet(context, controller),
+                        icon: const Icon(Icons.edit_rounded,
+                            size: 17, color: Colors.white),
+                        label: const Text(
+                          '變更狀態與活動',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Overview Card (Bio + Member Since, matching standard Discord Mobile Profile)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: p.sidebarBg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: p.border, width: 0.7),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (acc.bio != null && acc.bio!.isNotEmpty) ...[
+                            Text(
+                              '簡介',
+                              style: TextStyle(
+                                color: p.textSecondary,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              acc.bio!,
+                              style: TextStyle(
+                                color: p.textPrimary,
+                                fontSize: 14.5,
+                                height: 1.45,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Divider(height: 1, color: p.border),
+                            ),
+                          ],
+                          Text(
+                            'Discord 加入時間',
+                            style: TextStyle(
+                              color: p.textSecondary,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            createdStr,
+                            style: TextStyle(
+                              color: p.textPrimary,
+                              fontSize: 14.5,
+                            ),
+                          ),
+                          if (controller.totalShards > 1) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Divider(height: 1, color: p.border),
+                            ),
+                            Text(
+                              '分片連線 (Shard)',
+                              style: TextStyle(
+                                color: p.textSecondary,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Shard ${controller.currentShard} / ${controller.totalShards}',
+                              style: TextStyle(
+                                color: p.textPrimary,
+                                fontSize: 14.5,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Copy Bot ID Tile
+                    Container(
+                      decoration: BoxDecoration(
+                        color: p.sidebarBg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: p.border, width: 0.7),
+                      ),
+                      child: ListTile(
+                        leading: Icon(Icons.badge_outlined,
+                            color: p.textSecondary, size: 20),
+                        title: Text('複製應用程式 / 機器人 ID',
+                            style:
+                                TextStyle(color: p.textPrimary, fontSize: 14.5)),
+                        subtitle: Text(acc.id,
+                            style:
+                                TextStyle(color: p.textMuted, fontSize: 12)),
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: acc.id));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('已複製 ID'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -555,56 +487,20 @@ class _YouProfileModalSheetState extends State<_YouProfileModalSheet> {
     );
   }
 
-  Widget _buildProfileSubTab(String title, int index, DiscordPalette p) {
-    final active = _subTab == index;
-    return GestureDetector(
-      onTap: () => setState(() => _subTab = index),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: active ? const Color(0xFF7983F5) : Colors.transparent,
-              width: 3,
-            ),
-          ),
-        ),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: active ? const Color(0xFF9AA5FF) : p.textMuted,
-            fontSize: 14.5,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _dockButton({
+  Widget _bannerCircleButton({
     required IconData icon,
-    required String label,
-    required DiscordPalette p,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 23),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: p.textSecondary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: const BoxDecoration(
+          color: Color(0x70000000),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
@@ -623,6 +519,7 @@ class DiscordSettingsScreen extends StatelessWidget {
       builder: (context, _) {
         final eco = controller.ecoSettings;
         final p = DiscordPalette(oled: eco.oledBlackMode);
+        final acc = controller.activeAccount;
 
         return Scaffold(
           backgroundColor: p.profileBg,
@@ -651,10 +548,10 @@ class DiscordSettingsScreen extends StatelessWidget {
                 ListTile(
                   leading:
                       Icon(Icons.dark_mode_outlined, color: p.textSecondary),
-                  title: Text('外觀',
+                  title: Text('外觀主題',
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    eco.oledBlackMode ? 'Onyx (純黑省電)' : 'Ash (經典深灰)',
+                    eco.oledBlackMode ? 'Onyx (純黑)' : 'Ash (深灰)',
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   trailing: Switch(
@@ -667,10 +564,10 @@ class DiscordSettingsScreen extends StatelessWidget {
                 Divider(height: 1, color: p.border),
                 SwitchListTile(
                   secondary: Icon(Icons.bolt_outlined, color: p.textSecondary),
-                  title: Text('低耗能背景休眠',
+                  title: Text('省電模式',
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    '背景閒置時自動暫停連線以節省電力',
+                    '背景閒置時自動休眠連線並降低記憶體快取',
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   value: eco.ecoPowerSaving,
@@ -686,6 +583,13 @@ class DiscordSettingsScreen extends StatelessWidget {
                 SwitchListTile(
                   title: Text('Message Content Intent',
                       style: TextStyle(color: p.textPrimary, fontSize: 14.5)),
+                  subtitle: acc != null && !acc.hasMessageContentIntent
+                      ? const Text(
+                          'Developer Portal 尚未開啟此權限',
+                          style: TextStyle(
+                              color: DiscordPalette.yellow, fontSize: 12),
+                        )
+                      : null,
                   value: eco.enableMessageContentIntent,
                   onChanged: (v) => controller.updateEcoSettings(
                     eco.copyWith(enableMessageContentIntent: v),
@@ -765,7 +669,7 @@ class DiscordSettingsScreen extends StatelessWidget {
   }
 }
 
-/// Official Discord Mobile "設定狀態" (Change Status) bottom sheet.
+/// Official Discord Mobile Status & Custom Status Editor Sheet.
 void showDiscordStatusSheet(
   BuildContext context,
   BotClientController controller,
@@ -802,7 +706,7 @@ void showDiscordStatusSheet(
                 const SizedBox(height: 14),
                 Center(
                   child: Text(
-                    '變更線上狀態',
+                    '設定狀態',
                     style: TextStyle(
                       color: p.textPrimary,
                       fontSize: 17,
@@ -868,6 +772,7 @@ void showDiscordStatusSheet(
                         dropdownColor: p.cardBg,
                         style: TextStyle(color: p.textPrimary, fontSize: 13.5),
                         items: const [
+                          DropdownMenuItem(value: 4, child: Text('自訂狀態')),
                           DropdownMenuItem(value: 0, child: Text('正在玩')),
                           DropdownMenuItem(value: 2, child: Text('正在聽')),
                           DropdownMenuItem(value: 3, child: Text('正在看')),
@@ -885,7 +790,7 @@ void showDiscordStatusSheet(
                           controller: activityCtrl,
                           style: TextStyle(color: p.textPrimary, fontSize: 14),
                           decoration: InputDecoration(
-                            hintText: '今天我學到了...',
+                            hintText: '輸入狀態文字...',
                             hintStyle:
                                 TextStyle(color: p.textMuted, fontSize: 14),
                             border: InputBorder.none,
@@ -893,6 +798,14 @@ void showDiscordStatusSheet(
                           ),
                         ),
                       ),
+                      if (activityCtrl.text.isNotEmpty)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(Icons.clear_rounded,
+                              size: 18, color: p.textMuted),
+                          onPressed: () =>
+                              setModalState(() => activityCtrl.clear()),
+                        ),
                     ],
                   ),
                 ),
@@ -1002,7 +915,7 @@ void showSwitchAccountsSheet(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      subtitle: Text(acc.username,
+                      subtitle: Text(acc.tag,
                           style: TextStyle(color: p.textMuted, fontSize: 12)),
                       trailing: active
                           ? const Icon(Icons.check_circle,

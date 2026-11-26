@@ -34,6 +34,9 @@ class DiscordGatewayService {
   static const String _defaultGatewayUrl = 'wss://gateway.discord.gg';
 
   final String token;
+  final int applicationFlags;
+  int currentShard;
+  int totalShards;
   EcoSettings ecoSettings;
   final void Function(GatewayDispatchEvent event) onDispatch;
   final void Function(GatewayConnectionState state) onStateChanged;
@@ -67,11 +70,14 @@ class DiscordGatewayService {
   GatewayConnectionState get state => _state;
 
   String _currentStatus = 'online';
-  int _currentActivityType = 0;
+  int _currentActivityType = 4;
   String _currentActivityName = '';
 
   DiscordGatewayService({
     required this.token,
+    this.applicationFlags = 0,
+    this.currentShard = 0,
+    this.totalShards = 1,
     required this.ecoSettings,
     required this.onDispatch,
     required this.onStateChanged,
@@ -285,6 +291,7 @@ class DiscordGatewayService {
 
   void _sendIdentify() {
     final intents = ecoSettings.computeIntentsBitmask(
+      applicationFlags: applicationFlags,
       stripPrivileged: _stripPrivilegedIntents,
     );
     _sendJson({
@@ -292,11 +299,12 @@ class DiscordGatewayService {
       'd': {
         'token': token,
         'intents': intents,
+        'shard': [currentShard, totalShards],
         'large_threshold': ecoSettings.ecoPowerSaving ? 50 : 100,
         'properties': {
           'os': Platform.isIOS ? 'ios' : 'android',
-          'browser': 'DiscordBotClient Mobile',
-          'device': 'DiscordBotClient Mobile',
+          'browser': 'Discord Android',
+          'device': 'DiscordBotClient',
         },
         'presence': _buildPresencePayload(),
       },
@@ -315,19 +323,42 @@ class DiscordGatewayService {
   }
 
   Map<String, dynamic> _buildPresencePayload() {
+    final text = _currentActivityName.trim();
+    List<Map<String, dynamic>> activities = const [];
+    if (text.isNotEmpty) {
+      if (_currentActivityType == 4) {
+        // Custom Status format from VencordDBCPlugin/utils/patches.ts:
+        activities = [
+          {
+            'name': 'Custom Status',
+            'type': 4,
+            'state': text,
+          }
+        ];
+      } else {
+        activities = [
+          {
+            'name': text,
+            'type': _currentActivityType,
+          }
+        ];
+      }
+    }
     return {
       'status': _currentStatus,
       'afk': _currentStatus == 'idle',
-      'activities': _currentActivityName.trim().isEmpty
-          ? <Map<String, dynamic>>[]
-          : [
-              {
-                'name': _currentActivityName.trim(),
-                'type': _currentActivityType,
-              }
-            ],
+      'activities': activities,
       'since': null,
     };
+  }
+
+  Future<void> switchShard(int nextShard) async {
+    if (nextShard < 0 || nextShard >= totalShards) return;
+    currentShard = nextShard;
+    _sessionId = null;
+    _lastSequence = null;
+    _resumeGatewayUrl = null;
+    await connect();
   }
 
   void updatePresence({

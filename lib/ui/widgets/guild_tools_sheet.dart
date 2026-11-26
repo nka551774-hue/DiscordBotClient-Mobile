@@ -5,33 +5,62 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 
-/// Authentic Discord Mobile Channel Details & Member List Sheet
-/// (opened by tapping the channel header or Members icon in a chat).
-class ChannelMembersSheet extends StatefulWidget {
+/// Authentic Discord Mobile Right Side-Panel / Drawer:
+/// - Channel Header + Topic
+/// - Circular Quick Actions: 釘選 / 討論串 / 邀請 / 設定
+/// - Member List grouped by Hoisted Roles (with Role Colors!), matching Discord & VencordDBCPlugin!
+class ChannelDetailsSidePanel extends StatefulWidget {
   final BotClientController controller;
   final DiscordPalette palette;
   final VoidCallback onOpenPins;
+  final void Function(String threadChannelId)? onSelectThread;
+  final VoidCallback? onClosePanel;
 
-  const ChannelMembersSheet({
+  const ChannelDetailsSidePanel({
     super.key,
     required this.controller,
     required this.palette,
     required this.onOpenPins,
+    this.onSelectThread,
+    this.onClosePanel,
   });
 
   @override
-  State<ChannelMembersSheet> createState() => _ChannelMembersSheetState();
+  State<ChannelDetailsSidePanel> createState() =>
+      _ChannelDetailsSidePanelState();
 }
 
-class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
+class _RoleGroupBucket {
+  final String id;
+  final String title;
+  final int position;
+  final List<DiscordMember> members = <DiscordMember>[];
+
+  _RoleGroupBucket({
+    required this.id,
+    required this.title,
+    required this.position,
+  });
+}
+
+class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
   List<DiscordMember> _members = const [];
   bool _loading = false;
+  String? _loadedGuildId;
   final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadMembers();
+    _ensureMembersLoaded();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChannelDetailsSidePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller.selectedGuildId != _loadedGuildId) {
+      _ensureMembersLoaded();
+    }
   }
 
   @override
@@ -40,21 +69,134 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
     super.dispose();
   }
 
-  Future<void> _loadMembers({String? query}) async {
+  Future<void> _ensureMembersLoaded({String? query}) async {
     final guild = widget.controller.selectedGuild;
     final rest = widget.controller.rest;
     if (guild == null || rest == null) return;
+
+    _loadedGuildId = guild.id;
+    // Seed immediately from cachedMembers so list isn't empty even without GUILD_MEMBERS intent!
+    if ((query == null || query.isEmpty) && guild.cachedMembers.isNotEmpty) {
+      _members = guild.cachedMembers.values.toList();
+    }
 
     setState(() => _loading = true);
     try {
       final res = (query != null && query.trim().isNotEmpty)
           ? await rest.searchGuildMembers(guild.id, query.trim())
           : await rest.getGuildMembers(guild.id, limit: 100);
-      if (mounted) setState(() => _members = res);
+      if (mounted && res.isNotEmpty) {
+        setState(() => _members = res);
+      }
     } catch (_) {
+      // Keep cachedMembers fallback gracefully
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  List<_RoleGroupBucket> _groupMembersByHoistedRole(
+    DiscordGuild guild,
+    List<DiscordMember> members,
+  ) {
+    final buckets = <String, _RoleGroupBucket>{};
+    final ungrouped = _RoleGroupBucket(
+      id: 'members',
+      title: '成員',
+      position: -1,
+    );
+
+    for (final m in members) {
+      final hoistId = m.resolveHoistRoleId(guild.roles);
+      if (hoistId != null && guild.roles.containsKey(hoistId)) {
+        final r = guild.roles[hoistId]!;
+        final b = buckets.putIfAbsent(
+          r.id,
+          () => _RoleGroupBucket(
+            id: r.id,
+            title: r.name,
+            position: r.position,
+          ),
+        );
+        b.members.add(m);
+      } else {
+        ungrouped.members.add(m);
+      }
+    }
+
+    final sorted = buckets.values.toList()
+      ..sort((a, b) => b.position.compareTo(a.position));
+    for (final b in sorted) {
+      b.members.sort((a, b2) =>
+          a.effectiveName.toLowerCase().compareTo(b2.effectiveName.toLowerCase()));
+    }
+    if (ungrouped.members.isNotEmpty) {
+      ungrouped.members.sort((a, b2) =>
+          a.effectiveName.toLowerCase().compareTo(b2.effectiveName.toLowerCase()));
+      sorted.add(ungrouped);
+    }
+    return sorted;
+  }
+
+  void _showThreadsSheet(DiscordChannel parentChannel, DiscordPalette p) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.65,
+        builder: (_, sCtrl) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                '討論串',
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Divider(height: 1, color: p.border),
+            Expanded(
+              child: FutureBuilder<List<DiscordChannel>>(
+                future: widget.controller.fetchForumThreads(parentChannel),
+                builder: (_, snap) {
+                  if (snap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final threads = snap.data ?? const [];
+                  if (threads.isEmpty) {
+                    return Center(
+                      child: Text('此頻道尚無討論串',
+                          style: TextStyle(color: p.textMuted)),
+                    );
+                  }
+                  return ListView.builder(
+                    controller: sCtrl,
+                    itemCount: threads.length,
+                    itemBuilder: (_, i) {
+                      final t = threads[i];
+                      return ListTile(
+                        leading: Icon(Icons.subdirectory_arrow_right_rounded,
+                            color: p.textMuted),
+                        title: Text(t.name,
+                            style: TextStyle(color: p.textPrimary)),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          widget.onSelectThread?.call(t.id);
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _showChannelEditDialog(DiscordChannel channel) async {
@@ -66,18 +208,18 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: p.cardBg,
-        title: const Text('Channel Settings'),
+        title: const Text('頻道設定'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Channel Name'),
+              decoration: const InputDecoration(labelText: '頻道名稱'),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: topicCtrl,
-              decoration: const InputDecoration(labelText: 'Channel Topic'),
+              decoration: const InputDecoration(labelText: '頻道主題'),
             ),
           ],
         ),
@@ -86,14 +228,14 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
             style: TextButton.styleFrom(foregroundColor: DiscordPalette.danger),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              Navigator.of(context).pop();
+              widget.onClosePanel?.call();
               await widget.controller.rest?.deleteChannel(channel.id);
             },
-            child: const Text('Delete'),
+            child: const Text('刪除頻道'),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () async {
@@ -104,7 +246,7 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
                 topic: topicCtrl.text.trim(),
               );
             },
-            child: const Text('Save'),
+            child: const Text('儲存'),
           ),
         ],
       ),
@@ -124,168 +266,161 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
     final canBan =
         DiscordPermissions.has(perms, DiscordPermissions.banMembers);
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.82,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (context, scrollCtrl) {
-        return ListView(
-          controller: scrollCtrl,
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: p.border,
-                  borderRadius: BorderRadius.circular(2),
+    final groupedBuckets = (guild != null && _members.isNotEmpty)
+        ? _groupMembersByHoistedRole(guild, _members)
+        : const <_RoleGroupBucket>[];
+
+    return Container(
+      color: p.sidebarBg,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        children: [
+          if (channel != null) ...[
+            Row(
+              children: [
+                Icon(
+                  channel.isDm ? Icons.alternate_email : Icons.tag_rounded,
+                  color: p.textSecondary,
+                  size: 22,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    channel.displayTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: p.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (channel.topic != null && channel.topic!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                channel.topic!,
+                style: TextStyle(color: p.textSecondary, fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: 16),
+
+            // Circular Discord Action Row: 釘選 / 討論串 / 邀請 / 設定
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _circleAction(
+                  p,
+                  icon: Icons.push_pin_rounded,
+                  label: '釘選',
+                  onTap: widget.onOpenPins,
+                ),
+                if (!channel.isDm && !channel.isThread)
+                  _circleAction(
+                    p,
+                    icon: Icons.forum_outlined,
+                    label: '討論串',
+                    onTap: () => _showThreadsSheet(channel, p),
+                  ),
+                if (!channel.isDm)
+                  _circleAction(
+                    p,
+                    icon: Icons.person_add_alt_1_rounded,
+                    label: '邀請',
+                    onTap: () async {
+                      try {
+                        final url = await widget.controller.rest!
+                            .createChannelInvite(channel.id);
+                        await Clipboard.setData(ClipboardData(text: url));
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('已複製邀請連結：$url')),
+                          );
+                        }
+                      } catch (_) {}
+                    },
+                  ),
+                if (!channel.isDm && canManageChannels)
+                  _circleAction(
+                    p,
+                    icon: Icons.settings_rounded,
+                    label: '設定',
+                    onTap: () => _showChannelEditDialog(channel),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Divider(color: p.border, height: 1),
+            const SizedBox(height: 14),
+          ],
+
+          // DM Recipient or Categorized Guild Member List
+          if (channel != null && channel.isDm) ...[
+            if (channel.dmRecipient != null)
+              _memberRow(
+                p,
+                user: channel.dmRecipient!,
+                displayName: channel.dmRecipient!.displayName,
+                roleColorInt: null,
+                canKick: false,
+                canBan: false,
+                guildId: null,
+              ),
+          ] else if (guild != null) ...[
+            TextField(
+              controller: _searchCtrl,
+              onSubmitted: (q) => _ensureMembersLoaded(query: q),
+              style: TextStyle(color: p.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: '搜尋成員',
+                hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
+                prefixIcon:
+                    Icon(Icons.search_rounded, size: 19, color: p.textMuted),
+                filled: true,
+                fillColor: p.elevatedBg,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-
-            // Channel Header (1:1 Discord Mobile)
-            if (channel != null) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    channel.isDm ? Icons.alternate_email : Icons.tag_rounded,
-                    color: p.textSecondary,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      channel.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: p.textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
+            const SizedBox(height: 12),
+            if (_loading && _members.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              ...groupedBuckets.expand((bucket) => [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 4),
+                      child: Text(
+                        '${bucket.title.toUpperCase()} — ${bucket.members.length}',
+                        style: TextStyle(
+                          color: p.textMuted,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              if (channel.topic != null && channel.topic!.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  channel.topic!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: p.textSecondary, fontSize: 13),
-                ),
-              ],
-              const SizedBox(height: 18),
-
-              // Discord Mobile Circular Action Row: Pins / Invite / Settings
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _circleAction(
-                    p,
-                    icon: Icons.push_pin_rounded,
-                    label: 'Pins',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      widget.onOpenPins();
-                    },
-                  ),
-                  if (!channel.isDm)
-                    _circleAction(
-                      p,
-                      icon: Icons.person_add_alt_1_rounded,
-                      label: 'Invite',
-                      onTap: () async {
-                        try {
-                          final url = await widget.controller.rest!
-                              .createChannelInvite(channel.id);
-                          await Clipboard.setData(ClipboardData(text: url));
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Invite copied: $url')),
-                            );
-                          }
-                        } catch (_) {}
-                      },
-                    ),
-                  if (!channel.isDm && canManageChannels)
-                    _circleAction(
-                      p,
-                      icon: Icons.settings_rounded,
-                      label: 'Settings',
-                      onTap: () => _showChannelEditDialog(channel),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Divider(color: p.border, height: 1),
-              const SizedBox(height: 14),
-            ],
-
-            // DM Recipient or Server Member List
-            if (channel != null && channel.isDm) ...[
-              if (channel.dmRecipient != null)
-                _memberRow(
-                  p,
-                  user: channel.dmRecipient!,
-                  displayName: channel.dmRecipient!.displayName,
-                  canKick: false,
-                  canBan: false,
-                  guildId: null,
-                ),
-            ] else if (guild != null) ...[
-              TextField(
-                controller: _searchCtrl,
-                onSubmitted: (q) => _loadMembers(query: q),
-                style: TextStyle(color: p.textPrimary, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: 'Search members',
-                  hintStyle: TextStyle(color: p.textMuted, fontSize: 14),
-                  prefixIcon:
-                      Icon(Icons.search_rounded, size: 20, color: p.textMuted),
-                  filled: true,
-                  fillColor: p.elevatedBg,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'MEMBERS${guild.memberCount != null ? ' — ${guild.memberCount}' : ''}',
-                style: TextStyle(
-                  color: p.textMuted,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.4,
-                ),
-              ),
-              const SizedBox(height: 6),
-              if (_loading)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else
-                ..._members.map((m) => _memberRow(
-                      p,
-                      user: m.user,
-                      displayName: m.effectiveName,
-                      canKick: canKick,
-                      canBan: canBan,
-                      guildId: guild.id,
-                    )),
-            ],
+                    ...bucket.members.map((m) => _memberRow(
+                          p,
+                          user: m.user,
+                          displayName: m.effectiveName,
+                          roleColorInt: m.resolveColor(guild.roles),
+                          canKick: canKick,
+                          canBan: canBan,
+                          guildId: guild.id,
+                        )),
+                  ]),
           ],
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -300,13 +435,13 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
       child: Column(
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              color: p.inputBg,
+              color: p.elevatedBg,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: p.textPrimary, size: 21),
+            child: Icon(icon, color: p.textPrimary, size: 20),
           ),
           const SizedBox(height: 6),
           Text(
@@ -326,14 +461,19 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
     DiscordPalette p, {
     required DiscordUser user,
     required String displayName,
+    required int? roleColorInt,
     required bool canKick,
     required bool canBan,
     required String? guildId,
   }) {
+    final nameColor =
+        roleColorInt != null ? Color(0xFF000000 | roleColorInt) : p.textPrimary;
+
     return ListTile(
+      dense: true,
       contentPadding: EdgeInsets.zero,
       leading: CircleAvatar(
-        radius: 18,
+        radius: 17,
         backgroundImage: NetworkImage(user.avatarUrl(size: 64)),
       ),
       title: Row(
@@ -344,8 +484,8 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: p.textPrimary,
-                fontSize: 15,
+                color: nameColor,
+                fontSize: 14.5,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -353,18 +493,28 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
           if (user.bot) ...[
             const SizedBox(width: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
               decoration: BoxDecoration(
                 color: DiscordPalette.blurple,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(3.5),
               ),
-              child: const Text(
-                'APP',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (user.isVerifiedBot) ...[
+                    const Icon(Icons.check_rounded,
+                        size: 10, color: Colors.white),
+                    const SizedBox(width: 1),
+                  ],
+                  const Text(
+                    'APP',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -372,7 +522,9 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
       ),
       subtitle: Text(
         user.username,
-        style: TextStyle(color: p.textMuted, fontSize: 12.5),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: p.textMuted, fontSize: 12),
       ),
       onTap: () => _showUserProfileSheet(
         p,
@@ -394,22 +546,10 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
     required String? guildId,
   }) {
     final created = snowflakeCreatedAt(user.id);
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
     final createdStr =
-        '${months[created.month - 1]} ${created.day}, ${created.year}';
+        '${created.year}年${created.month}月${created.day}日';
+    final canMessage =
+        !user.bot && user.id != widget.controller.activeAccount?.id;
 
     showModalBottomSheet<void>(
       context: context,
@@ -431,13 +571,40 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          displayName,
-                          style: TextStyle(
-                            color: p.textPrimary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: p.textPrimary,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            if (user.bot) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: DiscordPalette.blurple,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'APP',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         Text(
                           user.username,
@@ -454,14 +621,15 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: p.elevatedBg,
+                  color: p.sidebarBg,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: p.border, width: 0.7),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Member Since',
+                      'Discord 加入時間',
                       style: TextStyle(
                         color: p.textSecondary,
                         fontSize: 12,
@@ -479,7 +647,7 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
               const SizedBox(height: 14),
               Row(
                 children: [
-                  if (user.id != widget.controller.activeAccount?.id)
+                  if (canMessage) ...[
                     Expanded(
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
@@ -487,20 +655,21 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
                         ),
                         onPressed: () async {
                           Navigator.of(ctx).pop();
-                          Navigator.of(context).pop();
+                          widget.onClosePanel?.call();
                           await widget.controller.openDmWithUser(user.id);
                         },
                         icon: const Icon(Icons.chat_bubble_rounded, size: 16),
-                        label: const Text('Message'),
+                        label: const Text('傳送訊息'),
                       ),
                     ),
-                  const SizedBox(width: 10),
+                    const SizedBox(width: 10),
+                  ],
                   OutlinedButton(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: user.id));
                       Navigator.of(ctx).pop();
                     },
-                    child: const Text('Copy User ID'),
+                    child: const Text('複製使用者 ID'),
                   ),
                 ],
               ),
@@ -516,9 +685,9 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
                           Navigator.of(ctx).pop();
                           await widget.controller.rest
                               ?.kickMember(guildId, user.id);
-                          _loadMembers();
+                          _ensureMembersLoaded();
                         },
-                        child: const Text('Kick'),
+                        child: const Text('踢出伺服器'),
                       ),
                     if (canBan)
                       TextButton(
@@ -528,9 +697,9 @@ class _ChannelMembersSheetState extends State<ChannelMembersSheet> {
                           Navigator.of(ctx).pop();
                           await widget.controller.rest
                               ?.banMember(guildId, user.id);
-                          _loadMembers();
+                          _ensureMembersLoaded();
                         },
-                        child: const Text('Ban'),
+                        child: const Text('封鎖成員'),
                       ),
                   ],
                 ),

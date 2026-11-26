@@ -4,13 +4,16 @@ import '../../models/discord_models.dart';
 import '../theme/app_theme.dart';
 
 /// 1:1 recreation of VencordDBCPlugin/components/EmbedEditor.tsx
+/// Supports BOTH Create mode and Edit mode for existing bot embeds!
 class EmbedComposerSheet extends StatefulWidget {
   final DiscordPalette palette;
+  final DiscordEmbed? initialEmbed;
   final void Function(DiscordEmbed embed, String optionalContent) onSend;
 
   const EmbedComposerSheet({
     super.key,
     required this.palette,
+    this.initialEmbed,
     required this.onSend,
   });
 
@@ -19,20 +22,50 @@ class EmbedComposerSheet extends StatefulWidget {
 }
 
 class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
-  final _authorNameCtrl = TextEditingController();
-  final _authorIconCtrl = TextEditingController();
-  final _titleCtrl = TextEditingController();
-  final _urlCtrl = TextEditingController();
-  final _descCtrl = TextEditingController();
-  final _colorHexCtrl = TextEditingController(text: '#5865F2');
-  final _imageUrlCtrl = TextEditingController();
-  final _thumbUrlCtrl = TextEditingController();
-  final _footerTitleCtrl = TextEditingController();
-  final _footerIconCtrl = TextEditingController();
+  late final TextEditingController _authorNameCtrl;
+  late final TextEditingController _authorIconCtrl;
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _urlCtrl;
+  late final TextEditingController _descCtrl;
+  late final TextEditingController _colorHexCtrl;
+  late final TextEditingController _imageUrlCtrl;
+  late final TextEditingController _thumbUrlCtrl;
+  late final TextEditingController _footerTitleCtrl;
+  late final TextEditingController _footerIconCtrl;
   bool _footerTimestamp = false;
-  final List<_EmbedFieldDraft> _fields = <_EmbedFieldDraft>[
-    _EmbedFieldDraft(),
-  ];
+  final List<_EmbedFieldDraft> _fields = <_EmbedFieldDraft>[];
+
+  @override
+  void initState() {
+    super.initState();
+    final init = widget.initialEmbed;
+    _authorNameCtrl = TextEditingController(text: init?.authorName ?? '');
+    _authorIconCtrl = TextEditingController(text: init?.authorIconUrl ?? '');
+    _titleCtrl = TextEditingController(text: init?.title ?? '');
+    _urlCtrl = TextEditingController(text: init?.url ?? '');
+    _descCtrl = TextEditingController(text: init?.description ?? '');
+    final initColor = init?.color != null
+        ? '#${init!.color!.toRadixString(16).padLeft(6, '0').toUpperCase()}'
+        : '#5865F2';
+    _colorHexCtrl = TextEditingController(text: initColor);
+    _imageUrlCtrl = TextEditingController(text: init?.imageUrl ?? '');
+    _thumbUrlCtrl = TextEditingController(text: init?.thumbnailUrl ?? '');
+    _footerTitleCtrl = TextEditingController(text: init?.footerText ?? '');
+    _footerIconCtrl = TextEditingController(text: init?.footerIconUrl ?? '');
+    _footerTimestamp = init?.timestamp != null;
+
+    if (init != null && init.fields.isNotEmpty) {
+      for (final f in init.fields) {
+        _fields.add(_EmbedFieldDraft(
+          name: f.name,
+          value: f.value,
+          inline: f.inline,
+        ));
+      }
+    } else {
+      _fields.add(_EmbedFieldDraft());
+    }
+  }
 
   @override
   void dispose() {
@@ -53,7 +86,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
   }
 
   int? _parseColor() {
-    var raw = _colorHexCtrl.text.trim().replaceAll('#', '');
+    final raw = _colorHexCtrl.text.trim().replaceAll('#', '');
     if (raw.length == 6) {
       return int.tryParse(raw, radix: 16);
     }
@@ -106,6 +139,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
   Widget build(BuildContext context) {
     final p = widget.palette;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final isEdit = widget.initialEmbed != null;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -117,13 +151,12 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
           padding: EdgeInsets.only(bottom: bottomInset),
           child: Column(
             children: [
-              // Modal Header matching EmbedEditorModal
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
                 child: Row(
                   children: [
                     Text(
-                      'Create Embed',
+                      isEdit ? 'Edit Embed' : 'Create Embed',
                       style: TextStyle(
                         color: p.textPrimary,
                         fontSize: 18,
@@ -145,7 +178,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                         ),
                       ),
                       onPressed: _submit,
-                      child: const Text('Send'),
+                      child: Text(isEdit ? 'Save' : 'Send'),
                     ),
                   ],
                 ),
@@ -156,7 +189,6 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                   controller: scrollCtrl,
                   padding: const EdgeInsets.all(14),
                   children: [
-                    // Author Card
                     _sectionCard(p, 'Author', [
                       _labeledInput(p, 'Name', _authorNameCtrl, 'Author name'),
                       const SizedBox(height: 10),
@@ -164,13 +196,10 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                           'https://i.imgur.com/image.png'),
                     ]),
                     const SizedBox(height: 12),
-
-                    // Body Card
                     _sectionCard(p, 'Body', [
                       _labeledInput(p, 'Title', _titleCtrl, 'Embed title'),
                       const SizedBox(height: 10),
-                      _labeledInput(
-                          p, 'URL', _urlCtrl, 'https://discord.com'),
+                      _labeledInput(p, 'URL', _urlCtrl, 'https://discord.com'),
                       const SizedBox(height: 10),
                       _labeledInput(
                         p,
@@ -183,8 +212,6 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                       _labeledInput(p, 'Color (Hex)', _colorHexCtrl, '#5865F2'),
                     ]),
                     const SizedBox(height: 12),
-
-                    // Images Card
                     _sectionCard(p, 'Images', [
                       _labeledInput(p, 'Image URL', _imageUrlCtrl,
                           'https://i.imgur.com/image.png'),
@@ -193,8 +220,6 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                           'https://i.imgur.com/image.png'),
                     ]),
                     const SizedBox(height: 12),
-
-                    // Fields Card
                     _sectionCard(p, 'Fields', [
                       ..._fields.asMap().entries.map((entry) {
                         final idx = entry.key;
@@ -206,13 +231,11 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: _rawInput(
-                                        p, f.nameCtrl, 'Name'),
+                                    child: _rawInput(p, f.nameCtrl, 'Name'),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
-                                    child: _rawInput(
-                                        p, f.valueCtrl, 'Value'),
+                                    child: _rawInput(p, f.valueCtrl, 'Value'),
                                   ),
                                   if (_fields.length > 1)
                                     IconButton(
@@ -236,8 +259,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                                     style: TextStyle(
                                         color: p.textSecondary, fontSize: 13)),
                                 value: f.inline,
-                                onChanged: (v) =>
-                                    setState(() => f.inline = v),
+                                onChanged: (v) => setState(() => f.inline = v),
                               ),
                             ],
                           ),
@@ -255,8 +277,6 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                         ),
                     ]),
                     const SizedBox(height: 12),
-
-                    // Footer Card
                     _sectionCard(p, 'Footer', [
                       _labeledInput(
                           p, 'Title', _footerTitleCtrl, 'Footer text'),
@@ -267,15 +287,14 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         title: Text('Timestamp',
-                            style:
-                                TextStyle(color: p.textPrimary, fontSize: 13.5)),
+                            style: TextStyle(
+                                color: p.textPrimary, fontSize: 13.5)),
                         subtitle: Text(
-                          'Displays the current time for new embeds',
+                          'Displays the current time for embeds',
                           style: TextStyle(color: p.textMuted, fontSize: 12),
                         ),
                         value: _footerTimestamp,
-                        onChanged: (v) =>
-                            setState(() => _footerTimestamp = v),
+                        onChanged: (v) => setState(() => _footerTimestamp = v),
                       ),
                     ]),
                   ],
@@ -296,7 +315,7 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: p.elevatedBg,
+        color: p.sidebarBg,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: p.border),
       ),
@@ -371,9 +390,16 @@ class _EmbedComposerSheetState extends State<EmbedComposerSheet> {
 }
 
 class _EmbedFieldDraft {
-  final nameCtrl = TextEditingController();
-  final valueCtrl = TextEditingController();
-  bool inline = false;
+  final TextEditingController nameCtrl;
+  final TextEditingController valueCtrl;
+  bool inline;
+
+  _EmbedFieldDraft({
+    String name = '',
+    String value = '',
+    this.inline = false,
+  })  : nameCtrl = TextEditingController(text: name),
+        valueCtrl = TextEditingController(text: value);
 
   void dispose() {
     nameCtrl.dispose();
