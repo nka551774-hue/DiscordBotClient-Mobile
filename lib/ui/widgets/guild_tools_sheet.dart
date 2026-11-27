@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
@@ -19,6 +20,8 @@ class ChannelDetailsSidePanel extends StatefulWidget {
   final void Function(String threadChannelId)? onSelectThread;
   final VoidCallback? onClosePanel;
   final VoidCallback? onNavigateToDm;
+  /// Shown as the official bottom-sheet details page (adds a drag handle).
+  final bool asSheet;
 
   const ChannelDetailsSidePanel({
     super.key,
@@ -28,6 +31,7 @@ class ChannelDetailsSidePanel extends StatefulWidget {
     this.onSelectThread,
     this.onClosePanel,
     this.onNavigateToDm,
+    this.asSheet = false,
   });
 
   @override
@@ -56,6 +60,8 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
   String? _loadedGuildId;
   final _searchCtrl = TextEditingController();
   String _filter = '';
+  Future<List<DiscordMessage>>? _pinsFuture;
+  String? _pinsFor;
 
   @override
   void initState() {
@@ -310,6 +316,321 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     );
   }
 
+  List<DiscordMessage> get _loadedMessages =>
+      widget.controller.messagesNotifier.value;
+
+  Widget _emptyTab(DiscordPalette p, String text) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: p.textMuted, fontSize: 13.5),
+          ),
+        ),
+      );
+
+  Widget _messagePreviewTile(DiscordPalette p, DiscordMessage m) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: CircleAvatar(
+          radius: 18,
+          backgroundImage: NetworkImage(m.author.avatarUrl(size: 64)),
+        ),
+        title: Text(
+          m.authorDisplayName(widget.controller.selectedGuild),
+          style: TextStyle(
+            color: p.textPrimary,
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: Text(
+          m.content.isEmpty ? '[附件 / Embed]' : m.content,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: p.textSecondary, fontSize: 13.5),
+        ),
+      );
+
+  /// Official "搜尋" button. shortcut: bots cannot use Discord's search API,
+  /// so this searches the messages already loaded for this channel.
+  void _showLocalSearch(DiscordPalette p) {
+    String q = '';
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setM) {
+          final needle = q.trim().toLowerCase();
+          final res = needle.isEmpty
+              ? const <DiscordMessage>[]
+              : _loadedMessages
+                  .where((m) => m.content.toLowerCase().contains(needle))
+                  .toList();
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.85,
+            builder: (_, sc) => Padding(
+              padding: EdgeInsets.fromLTRB(
+                  16, 16, 16, MediaQuery.of(ctx).viewInsets.bottom),
+              child: Column(
+                children: [
+                  TextField(
+                    autofocus: true,
+                    onChanged: (v) => setM(() => q = v),
+                    style: TextStyle(color: p.textPrimary),
+                    decoration: InputDecoration(
+                      hintText: '搜尋此頻道已載入的訊息',
+                      prefixIcon:
+                          Icon(Icons.search_rounded, color: p.textMuted),
+                      filled: true,
+                      fillColor: p.elevatedBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: needle.isNotEmpty && res.isEmpty
+                        ? _emptyTab(p, '找不到符合的訊息')
+                        : ListView.builder(
+                            controller: sc,
+                            itemCount: res.length,
+                            itemBuilder: (_, i) =>
+                                _messagePreviewTile(p, res[i]),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _membersTab(
+    DiscordPalette p,
+    DiscordChannel channel,
+    DiscordGuild? guild,
+    List<_RoleGroupBucket> groupedBuckets,
+  ) {
+    final ctrl = widget.controller;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        if (channel.isDm) ...[
+          if (channel.dmRecipient != null)
+            _memberRow(
+              p,
+              user: channel.dmRecipient!,
+              member: null,
+              displayName: channel.dmRecipient!.displayName,
+              roleColorInt: null,
+              guildId: null,
+            ),
+        ] else if (guild != null) ...[
+          if (!ctrl.vencord.getSetting<bool>('BotClient', 'showMemberList', true))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text(
+                  '已於 Vencord > BotClient 停用成員列表',
+                  style: TextStyle(color: p.textMuted, fontSize: 13),
+                ),
+              ),
+            )
+          else ...[
+            TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _filter = v),
+              onSubmitted: (q) => _ensureMembersLoaded(query: q),
+              style: TextStyle(color: p.textPrimary, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: '搜尋成員',
+                hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
+                prefixIcon:
+                    Icon(Icons.search_rounded, size: 19, color: p.textMuted),
+                filled: true,
+                fillColor: p.elevatedBg,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_loading && _members.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              ...groupedBuckets.expand((bucket) {
+                final colorHeader =
+                    ctrl.vencord.isPluginEnabled('RoleColorEverywhere') &&
+                        ctrl.vencord.getSetting<bool>(
+                            'RoleColorEverywhere', 'roleHeaders', true) &&
+                        bucket.color != null;
+                return [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 14, bottom: 4),
+                    child: Text(
+                      '${bucket.title} — ${bucket.members.length}',
+                      style: TextStyle(
+                        color: colorHeader
+                            ? Color(0xFF000000 | bucket.color!)
+                            : p.textMuted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  ...bucket.members.map((m) => _memberRow(
+                        p,
+                        user: m.user,
+                        member: m,
+                        displayName: m.effectiveName,
+                        roleColorInt: m.resolveColor(guild.roles),
+                        guildId: guild.id,
+                      )),
+                ];
+              }),
+          ],
+        ],
+      ],
+    );
+  }
+
+  Widget _mediaTab(DiscordPalette p) {
+    final imgs = [
+      for (final m in _loadedMessages)
+        for (final a in m.attachments)
+          if (a.isImage) a,
+    ];
+    if (imgs.isEmpty) return _emptyTab(p, '已載入的訊息中沒有媒體');
+    return GridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
+      ),
+      itemCount: imgs.length,
+      itemBuilder: (_, i) => GestureDetector(
+        onTap: () => showVencordImageViewerModal(
+          context,
+          palette: p,
+          title: imgs[i].filename,
+          imageUrl: imgs[i].previewUrl(maxWidth: 1024),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            imgs[i].previewUrl(maxWidth: 240),
+            fit: BoxFit.cover,
+            cacheWidth: 240,
+            errorBuilder: (_, __, ___) => Container(color: p.elevatedBg),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pinsTab(DiscordPalette p, DiscordChannel channel) {
+    final rest = widget.controller.rest;
+    if (rest == null) return _emptyTab(p, '尚未連線');
+    if (_pinsFor != channel.id || _pinsFuture == null) {
+      _pinsFor = channel.id;
+      _pinsFuture = rest.getPinnedMessages(channel.id);
+    }
+    return FutureBuilder<List<DiscordMessage>>(
+      future: _pinsFuture,
+      builder: (_, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final pins = snap.data ?? const <DiscordMessage>[];
+        if (pins.isEmpty) return _emptyTab(p, '此頻道目前沒有任何釘選訊息');
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: pins.length,
+          separatorBuilder: (_, __) => Divider(height: 1, color: p.border),
+          itemBuilder: (_, i) => _messagePreviewTile(p, pins[i]),
+        );
+      },
+    );
+  }
+
+  Widget _linksTab(DiscordPalette p) {
+    final re = RegExp(r'https?://[^\s<>)]+');
+    final links = <String>[
+      for (final m in _loadedMessages)
+        for (final mt in re.allMatches(m.content)) mt.group(0)!,
+    ];
+    if (links.isEmpty) return _emptyTab(p, '已載入的訊息中沒有連結');
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      itemCount: links.length,
+      separatorBuilder: (_, __) => Divider(height: 1, color: p.border),
+      itemBuilder: (_, i) => ListTile(
+        leading: Icon(Icons.link_rounded, color: p.textSecondary),
+        title: Text(
+          links[i],
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: const Color(0xFF00A8FC), fontSize: 13.5),
+        ),
+        onTap: () {
+          final uri = Uri.tryParse(links[i]);
+          if (uri != null) {
+            launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _filesTab(DiscordPalette p) {
+    final files = [
+      for (final m in _loadedMessages)
+        for (final a in m.attachments)
+          if (!a.isImage) a,
+    ];
+    if (files.isEmpty) return _emptyTab(p, '已載入的訊息中沒有檔案');
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      itemCount: files.length,
+      separatorBuilder: (_, __) => Divider(height: 1, color: p.border),
+      itemBuilder: (_, i) => ListTile(
+        leading: Icon(Icons.insert_drive_file_outlined,
+            color: p.textSecondary),
+        title: Text(
+          files[i].filename,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: p.textPrimary, fontSize: 14),
+        ),
+        subtitle: Text(
+          files[i].formattedSize,
+          style: TextStyle(color: p.textMuted, fontSize: 12),
+        ),
+        onTap: () {
+          final uri = Uri.tryParse(files[i].url);
+          if (uri != null) {
+            launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+      ),
+    );
+  }
+
+  /// Official channel details page: icon, name, topic, 4 round actions,
+  /// then 成員 / 媒體 / 釘選 / 連結 / 檔案 tabs.
   Widget _buildPanel(
     BuildContext context,
     DiscordPalette p,
@@ -319,221 +640,192 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     bool canManageChannels,
     List<DiscordMember> visibleMembers,
   ) {
+    if (channel == null) return Container(color: p.sidebarBg);
+    final ctrl = widget.controller;
     final groupedBuckets = (guild != null && visibleMembers.isNotEmpty)
         ? _groupMembersByHoistedRole(guild, visibleMembers)
         : const <_RoleGroupBucket>[];
+    final dmUser = channel.dmRecipient;
+    final subtitle = (channel.topic != null && channel.topic!.isNotEmpty)
+        ? channel.topic!
+        : (guild?.name ?? dmUser?.username ?? '');
 
-    return Container(
-      color: p.sidebarBg,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        children: [
-          if (channel != null) ...[
-            Row(
-              children: [
-                if (channel.isDm)
-                  Icon(Icons.alternate_email,
-                      color: p.textSecondary, size: 22)
-                else if (channel.isThread)
-                  Icon(Icons.chat_bubble_outline_rounded,
-                      color: p.textSecondary, size: 20)
-                else if (channel.type == 5)
-                  Icon(Icons.campaign_rounded,
-                      color: p.textSecondary, size: 22)
-                else
-                  DiscordChannelHashIcon(
-                    locked: false,
-                    color: p.textSecondary,
-                    size: 22,
-                  ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    channel.displayTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: p.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+    final Widget headerIcon;
+    if (channel.isDm && dmUser != null) {
+      headerIcon = CircleAvatar(
+        radius: 32,
+        backgroundImage: NetworkImage(dmUser.avatarUrl(size: 128)),
+      );
+    } else {
+      headerIcon = Container(
+        width: 64,
+        height: 64,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: p.elevatedBg, shape: BoxShape.circle),
+        child: channel.isThread
+            ? Icon(Icons.chat_bubble_outline_rounded,
+                size: 28, color: p.textPrimary)
+            : (channel.type == 5
+                ? Icon(Icons.campaign_rounded, size: 32, color: p.textPrimary)
+                : (channel.isVoice
+                    ? Icon(Icons.volume_up_rounded,
+                        size: 30, color: p.textPrimary)
+                    : DiscordChannelHashIcon(
+                        locked: false,
+                        color: p.textPrimary,
+                        size: 32,
+                      ))),
+      );
+    }
+
+    const tabs = ['成員', '媒體', '釘選', '連結', '檔案'];
+    return DefaultTabController(
+      length: tabs.length,
+      child: Container(
+        color: p.sidebarBg,
+        child: Column(
+          children: [
+            if (widget.asSheet) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: p.border,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-              ],
-            ),
-            if (channel.topic != null && channel.topic!.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                channel.topic!,
-                style: TextStyle(color: p.textSecondary, fontSize: 13),
               ),
             ],
             const SizedBox(height: 16),
-
-            // Circular Discord Action Row: 釘選 / 討論串 / 邀請 / 設定 / Vencord 工具
-            Wrap(
-              alignment: WrapAlignment.spaceEvenly,
-              spacing: 14,
-              runSpacing: 10,
-              children: [
-                _circleAction(
-                  p,
-                  icon: Icons.push_pin_rounded,
-                  label: '釘選',
-                  onTap: widget.onOpenPins,
+            headerIcon,
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                channel.isDm ? channel.displayTitle : channel.name,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                 ),
-                if (!channel.isDm && !channel.isThread)
-                  _circleAction(
-                    p,
-                    icon: Icons.forum_outlined,
-                    label: '討論串',
-                    onTap: () => _showThreadsSheet(channel, p),
-                  ),
-                if (!channel.isDm)
-                  _circleAction(
-                    p,
-                    icon: Icons.person_add_alt_1_rounded,
-                    label: '邀請',
-                    onTap: () async {
-                      try {
-                        final url = await widget.controller.rest!
-                            .createChannelInvite(channel.id);
-                        await Clipboard.setData(ClipboardData(text: url));
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('已複製邀請連結：$url')),
-                          );
-                        }
-                      } catch (_) {}
-                    },
-                  ),
-                if (!channel.isDm && canManageChannels)
-                  _circleAction(
-                    p,
-                    icon: Icons.settings_rounded,
-                    label: '設定',
-                    onTap: () => _showChannelEditDialog(channel),
-                  ),
-                if (!channel.isDm &&
-                    widget.controller.vencord
-                        .isPluginEnabled('PermissionsViewer'))
-                  _circleAction(
-                    p,
-                    icon: Icons.admin_panel_settings_outlined,
-                    label: '權限',
-                    onTap: () => showVencordPermissionsModal(
-                      context,
-                      palette: p,
-                      title: '#${channel.name}',
-                      permissions: perms,
-                    ),
-                  ),
-                if (widget.controller.vencord.isPluginEnabled('ViewRaw'))
-                  _circleAction(
-                    p,
-                    icon: Icons.code_rounded,
-                    label: 'Raw',
-                    onTap: () => showVencordRawModal(
-                      context,
-                      palette: p,
-                      title: 'Channel',
-                      data: channel.toJson(),
-                      sortKeys: widget.controller.vencord
-                          .getSetting<bool>('ViewRaw', 'sortKeys', true),
-                    ),
-                  ),
-              ],
+              ),
             ),
-            const SizedBox(height: 16),
-            Divider(color: p.border, height: 1),
-            const SizedBox(height: 14),
-          ],
-
-          // DM Recipient or Categorized Guild Member List
-          if (channel != null && channel.isDm) ...[
-            if (channel.dmRecipient != null)
-              _memberRow(
-                p,
-                user: channel.dmRecipient!,
-                member: null,
-                displayName: channel.dmRecipient!.displayName,
-                roleColorInt: null,
-                guildId: null,
-              ),
-          ] else if (guild != null) ...[
-            if (!widget.controller.vencord
-                .getSetting<bool>('BotClient', 'showMemberList', true))
+            if (subtitle.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 20),
-                child: Center(
-                  child: Text(
-                    '已於 Vencord > BotClient 停用成員列表',
-                    style: TextStyle(color: p.textMuted, fontSize: 13),
-                  ),
-                ),
-              )
-            else ...[
-              TextField(
-                controller: _searchCtrl,
-                onChanged: (v) => setState(() => _filter = v),
-                onSubmitted: (q) => _ensureMembersLoaded(query: q),
-                style: TextStyle(color: p.textPrimary, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: '搜尋成員',
-                  hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
-                  prefixIcon:
-                      Icon(Icons.search_rounded, size: 19, color: p.textMuted),
-                  filled: true,
-                  fillColor: p.elevatedBg,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 9),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
+                padding: const EdgeInsets.fromLTRB(24, 3, 24, 0),
+                child: Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: p.textMuted, fontSize: 13),
                 ),
               ),
-              const SizedBox(height: 12),
-              if (_loading && _members.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else
-                ...groupedBuckets.expand((bucket) {
-                  final colorHeader = widget.controller.vencord
-                          .isPluginEnabled('RoleColorEverywhere') &&
-                      widget.controller.vencord.getSetting<bool>(
-                          'RoleColorEverywhere', 'roleHeaders', true) &&
-                      bucket.color != null;
-                  return [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10, bottom: 4),
-                      child: Text(
-                        '${bucket.title.toUpperCase()} — ${bucket.members.length}',
-                        style: TextStyle(
-                          color: colorHeader
-                              ? Color(0xFF000000 | bucket.color!)
-                              : p.textMuted,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.4,
-                        ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _circleAction(
+                    p,
+                    icon: Icons.search_rounded,
+                    label: '搜尋',
+                    onTap: () => _showLocalSearch(p),
+                  ),
+                  if (!channel.isDm && !channel.isThread)
+                    _circleAction(
+                      p,
+                      icon: Icons.forum_outlined,
+                      label: '討論串',
+                      onTap: () => _showThreadsSheet(channel, p),
+                    ),
+                  if (!channel.isDm)
+                    _circleAction(
+                      p,
+                      icon: Icons.person_add_alt_1_rounded,
+                      label: '邀請',
+                      onTap: () async {
+                        try {
+                          final url =
+                              await ctrl.rest!.createChannelInvite(channel.id);
+                          await Clipboard.setData(ClipboardData(text: url));
+                          if (mounted) {
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              SnackBar(content: Text('已複製邀請連結：$url')),
+                            );
+                          }
+                        } catch (_) {}
+                      },
+                    ),
+                  if (!channel.isDm && canManageChannels)
+                    _circleAction(
+                      p,
+                      icon: Icons.settings_rounded,
+                      label: '設定',
+                      onTap: () => _showChannelEditDialog(channel),
+                    ),
+                  if (!channel.isDm &&
+                      ctrl.vencord.isPluginEnabled('PermissionsViewer'))
+                    _circleAction(
+                      p,
+                      icon: Icons.admin_panel_settings_outlined,
+                      label: '權限',
+                      onTap: () => showVencordPermissionsModal(
+                        context,
+                        palette: p,
+                        title: '#${channel.name}',
+                        permissions: perms,
                       ),
                     ),
-                    ...bucket.members.map((m) => _memberRow(
-                          p,
-                          user: m.user,
-                          member: m,
-                          displayName: m.effectiveName,
-                          roleColorInt: m.resolveColor(guild.roles),
-                          guildId: guild.id,
-                        )),
-                  ];
-                }),
-            ],
+                  if (ctrl.vencord.isPluginEnabled('ViewRaw'))
+                    _circleAction(
+                      p,
+                      icon: Icons.code_rounded,
+                      label: 'Raw',
+                      onTap: () => showVencordRawModal(
+                        context,
+                        palette: p,
+                        title: 'Channel',
+                        data: channel.toJson(),
+                        sortKeys: ctrl.vencord
+                            .getSetting<bool>('ViewRaw', 'sortKeys', true),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelColor: p.textPrimary,
+              unselectedLabelColor: p.textMuted,
+              indicatorColor: DiscordPalette.blurple,
+              indicatorSize: TabBarIndicatorSize.label,
+              dividerColor: p.border,
+              labelStyle: const TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+              ),
+              tabs: [for (final t in tabs) Tab(text: t, height: 40)],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _membersTab(p, channel, guild, groupedBuckets),
+                  _mediaTab(p),
+                  _pinsTab(p, channel),
+                  _linksTab(p),
+                  _filesTab(p),
+                ],
+              ),
+            ),
           ],
-        ],
+        ),
       ),
     );
   }

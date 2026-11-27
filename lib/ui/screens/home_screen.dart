@@ -438,6 +438,36 @@ class _HomeScreenState extends State<HomeScreen>
     return '${d.inDays ~/ 365} 年';
   }
 
+  /// Official channel details page (tap channel name / members icon).
+  void _openChannelDetailsSheet(DiscordPalette p) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(ctx).size.height * 0.92,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: p.sidebarBg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: ChannelDetailsSidePanel(
+          controller: widget.controller,
+          palette: p,
+          asSheet: true,
+          onOpenPins: () => _openPinsModal(p),
+          onSelectThread: (tid) {
+            Navigator.of(ctx).pop();
+            widget.controller.selectChannel(tid, markRead: true);
+            _animateToPanel(0.0);
+          },
+          onClosePanel: () => Navigator.of(ctx).pop(),
+          onNavigateToDm: () => _animateToPanel(0.0),
+        ),
+      ),
+    );
+  }
+
   void _openPinsModal(DiscordPalette p) {
     final ch = widget.controller.selectedChannel;
     final rest = widget.controller.rest;
@@ -652,7 +682,7 @@ class _HomeScreenState extends State<HomeScreen>
                       }
                       final deltaVal = -dx / w;
                       _panelCtrl.value =
-                          (_panelCtrl.value + deltaVal).clamp(-1.0, 1.0);
+                          (_panelCtrl.value + deltaVal).clamp(-1.0, 0.0);
                     },
                     onHorizontalDragEnd: (details) {
                       final vx = details.primaryVelocity ?? 0;
@@ -662,7 +692,7 @@ class _HomeScreenState extends State<HomeScreen>
                         if (cur < -0.15 && ctrl.selectedChannel != null) {
                           _animateToPanel(0.0);
                         } else if (cur >= -0.15) {
-                          _animateToPanel(1.0);
+                          _animateToPanel(0.0);
                         } else {
                           _animateToPanel(-1.0);
                         }
@@ -678,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen>
                         if (cur < -0.45) {
                           _animateToPanel(-1.0);
                         } else if (cur > 0.42) {
-                          _animateToPanel(1.0);
+                          _animateToPanel(0.0);
                         } else {
                           _animateToPanel(0.0);
                         }
@@ -722,7 +752,7 @@ class _HomeScreenState extends State<HomeScreen>
                                         showBackButton: true,
                                         onBack: () => _animateToPanel(-1.0),
                                         onToggleRightDrawer: () =>
-                                            _animateToPanel(1.0),
+                                            _openChannelDetailsSheet(p),
                                         onEnsureCenterChat: () =>
                                             _animateToPanel(0.0),
                                         onOpenVoiceRoom: (g, ch) =>
