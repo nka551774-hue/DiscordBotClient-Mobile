@@ -8,6 +8,7 @@ import '../../services/vencord_engine.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'user_profile_sheet.dart';
+import '../../l10n/strings.dart';
 
 // ============================================================================
 // 1. Vencord Settings Screen (Plugins / Themes & QuickCSS / Backup & Restore)
@@ -79,7 +80,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '安裝自訂 Vencord 插件 (Userplugin)',
+                    tr('安裝自訂 Vencord 插件 (Userplugin)'),
                     style: TextStyle(
                       color: p.textPrimary,
                       fontSize: 18,
@@ -88,7 +89,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '支援貼上 GitHub Vencord 插件網址 (.ts / .tsx / .js / 資料夾連結) 或直接貼上 definePlugin({...}) 原始碼與 JSON 描述檔。',
+                    tr('支援貼上 GitHub Vencord 插件網址 (.ts / .tsx / .js / 資料夾連結) 或直接貼上 definePlugin({...}) 原始碼與 JSON 描述檔。'),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   const SizedBox(height: 12),
@@ -96,7 +97,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     controller: urlCtrl,
                     style: TextStyle(color: p.textPrimary, fontSize: 14),
                     decoration: InputDecoration(
-                      labelText: 'GitHub / Raw 插件網址 (選填)',
+                      labelText: tr('GitHub / Raw 插件網址 (選填)'),
                       hintText:
                           'https://github.com/Vendicated/Vencord/tree/main/src/plugins/...',
                       filled: true,
@@ -117,7 +118,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                       fontFamily: 'monospace',
                     ),
                     decoration: InputDecoration(
-                      labelText: '或直接貼上 definePlugin({...}) 程式碼 / JSON',
+                      labelText: tr('或直接貼上 definePlugin({...}) 程式碼 / JSON'),
                       hintText:
                           'export default definePlugin({ name: "MyPlugin", description: "...", ... })',
                       filled: true,
@@ -144,7 +145,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     children: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('取消'),
+                        child: Text(tr('取消')),
                       ),
                       const SizedBox(width: 8),
                       FilledButton(
@@ -180,7 +181,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                            '已安裝並啟用插件：${installed.name}'),
+                                            trf('已安裝並啟用插件：{0}', [installed.name])),
                                       ),
                                     );
                                   }
@@ -200,7 +201,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text('安裝插件'),
+                            : Text(tr('安裝插件')),
                       ),
                     ],
                   ),
@@ -247,7 +248,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                       ),
                       if (plugin.isCustom)
                         IconButton(
-                          tooltip: '移除自訂插件',
+                          tooltip: tr('移除自訂插件'),
                           icon: const Icon(Icons.delete_outline_rounded,
                               color: DiscordPalette.danger),
                           onPressed: () async {
@@ -261,7 +262,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     ],
                   ),
                   Text(
-                    '作者：${plugin.authors.join(', ')}',
+                    trf('作者：{0}', [plugin.authors.join(', ')]),
                     style: TextStyle(color: p.textMuted, fontSize: 12),
                   ),
                   const SizedBox(height: 6),
@@ -272,7 +273,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                   if (plugin.commands.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(
-                      '註冊斜線指令：${plugin.commands.map((c) => '/${c.name}').join(', ')}',
+                      trf('註冊斜線指令：{0}', [plugin.commands.map((c) => '/${c.name}').join(', ')]),
                       style: TextStyle(
                         color: p.brandColor,
                         fontSize: 12.5,
@@ -287,7 +288,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Text(
-                        '此外掛沒有額外可調整的設定項目。',
+                        tr('此外掛沒有額外可調整的設定項目。'),
                         style: TextStyle(color: p.textMuted, fontSize: 13.5),
                       ),
                     )
@@ -452,7 +453,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'TextReplace 規則管理',
+                  tr('TextReplace 規則管理'),
                   style: TextStyle(
                     color: p.textPrimary,
                     fontSize: 18,
@@ -462,7 +463,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                 const SizedBox(height: 10),
                 if (rules.isEmpty)
                   Text(
-                    '尚未新增任何自動文字取代規則。',
+                    tr('尚未新增任何自動文字取代規則。'),
                     style: TextStyle(color: p.textMuted, fontSize: 13),
                   )
                 else
@@ -495,14 +496,14 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     Expanded(
                       child: TextField(
                         controller: findCtrl,
-                        decoration: const InputDecoration(hintText: '尋找文字 / Regex'),
+                        decoration: InputDecoration(hintText: tr('尋找文字 / Regex')),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
                         controller: repCtrl,
-                        decoration: const InputDecoration(hintText: '取代為'),
+                        decoration: InputDecoration(hintText: tr('取代為')),
                       ),
                     ),
                   ],
@@ -513,7 +514,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                       value: isRegex,
                       onChanged: (v) => setM(() => isRegex = v ?? false),
                     ),
-                    Text('使用正規表示式 (Regex)',
+                    Text(tr('使用正規表示式 (Regex)'),
                         style: TextStyle(color: p.textSecondary, fontSize: 13)),
                     const Spacer(),
                     FilledButton(
@@ -532,7 +533,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                         );
                         setM(() {});
                       },
-                      child: const Text('新增規則'),
+                      child: Text(tr('新增規則')),
                     ),
                   ],
                 ),
@@ -574,7 +575,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
             title: const Text('Vencord'),
             actions: [
               IconButton(
-                tooltip: '安裝自訂 Vencord 插件',
+                tooltip: tr('安裝自訂 Vencord 插件'),
                 icon: const Icon(Icons.extension_rounded),
                 onPressed: () => _openInstallCustomPluginModal(p),
               ),
@@ -584,10 +585,10 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
               indicatorColor: p.brandColor,
               labelColor: p.textPrimary,
               unselectedLabelColor: p.textMuted,
-              tabs: const [
-                Tab(text: '插件 (Plugins)'),
-                Tab(text: '主題與 CSS'),
-                Tab(text: '備份與同步'),
+              tabs: [
+                Tab(text: tr('插件 (Plugins)')),
+                Tab(text: tr('主題與 CSS')),
+                Tab(text: tr('備份與同步')),
               ],
             ),
           ),
@@ -603,7 +604,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                       onChanged: (v) => setState(() => _searchQuery = v),
                       style: TextStyle(color: p.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: '搜尋 Vencord 插件...',
+                        hintText: tr('搜尋 Vencord 插件...'),
                         hintStyle: TextStyle(color: p.textMuted, fontSize: 14),
                         prefixIcon: Icon(Icons.search_rounded,
                             color: p.textMuted, size: 19),
@@ -624,14 +625,14 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     child: Row(
                       children: [
-                        _filterChip(p, '全部 (${vc.allPlugins.length})', 0),
+                        _filterChip(p, trf('全部 ({0})', [vc.allPlugins.length]), 0),
                         const SizedBox(width: 8),
-                        _filterChip(p, '已啟用', 1),
+                        _filterChip(p, tr('已啟用'), 1),
                         const SizedBox(width: 8),
-                        _filterChip(p, '已停用', 2),
+                        _filterChip(p, tr('已停用'), 2),
                         const SizedBox(width: 8),
                         _filterChip(
-                            p, '自訂外掛 (${vc.customPlugins.length})', 3),
+                            p, trf('自訂外掛 ({0})', [vc.customPlugins.length]), 3),
                       ],
                     ),
                   ),
@@ -696,8 +697,8 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                                                 borderRadius:
                                                     BorderRadius.circular(4),
                                               ),
-                                              child: const Text(
-                                                '核心必備',
+                                              child: Text(
+                                                tr('核心必備'),
                                                 style: TextStyle(
                                                   color: Colors.white,
                                                   fontSize: 9.5,
@@ -718,8 +719,8 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                                                 borderRadius:
                                                     BorderRadius.circular(4),
                                               ),
-                                              child: const Text(
-                                                '自訂',
+                                              child: Text(
+                                                tr('自訂'),
                                                 style: TextStyle(
                                                   color: Colors.white,
                                                   fontSize: 9.5,
@@ -792,7 +793,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     ),
                     child: SwitchListTile(
                       title: Text(
-                        '啟用 QuickCSS',
+                        tr('啟用 QuickCSS'),
                         style: TextStyle(
                           color: p.textPrimary,
                           fontSize: 15,
@@ -800,7 +801,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                         ),
                       ),
                       subtitle: Text(
-                        '套用自訂 Discord / Vencord CSS 色彩變數',
+                        tr('套用自訂 Discord / Vencord CSS 色彩變數'),
                         style: TextStyle(color: p.textMuted, fontSize: 12.5),
                       ),
                       value: _useQuickCss,
@@ -809,7 +810,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    '線上主題連結 (Online Themes / themeLinks)',
+                    tr('線上主題連結 (Online Themes / themeLinks)'),
                     style: TextStyle(
                       color: p.textSecondary,
                       fontSize: 13,
@@ -827,7 +828,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                     ),
                     decoration: InputDecoration(
                       hintText:
-                          '每行一個 .theme.css 或 GitHub Raw CSS 網址\nhttps://raw.githubusercontent.com/.../theme.css',
+                          tr('每行一個 .theme.css 或 GitHub Raw CSS 網址\nhttps://raw.githubusercontent.com/.../theme.css'),
                       hintStyle: TextStyle(color: p.textMuted, fontSize: 12),
                       filled: true,
                       fillColor: p.sidebarBg,
@@ -839,7 +840,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'QuickCSS (:root 變數)',
+                    tr('QuickCSS (:root 變數)'),
                     style: TextStyle(
                       color: p.textSecondary,
                       fontSize: 13,
@@ -882,11 +883,11 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                           );
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('已重置為原版配色')),
+                              SnackBar(content: Text(tr('已重置為原版配色'))),
                             );
                           }
                         },
-                        child: const Text('重置配色'),
+                        child: Text(tr('重置配色')),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -908,8 +909,8 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                                   if (mounted) {
                                     setState(() => _applyingThemes = false);
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('已套用 Vencord 主題與 CSS')),
+                                      SnackBar(
+                                          content: Text(tr('已套用 Vencord 主題與 CSS'))),
                                     );
                                   }
                                 },
@@ -923,7 +924,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                                   ),
                                 )
                               : const Icon(Icons.check_rounded, size: 18),
-                          label: const Text('儲存並套用主題'),
+                          label: Text(tr('儲存並套用主題')),
                         ),
                       ),
                     ],
@@ -946,7 +947,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Vencord 設定備份與跨端同步',
+                          tr('Vencord 設定備份與跨端同步'),
                           style: TextStyle(
                             color: p.textPrimary,
                             fontSize: 16.5,
@@ -955,7 +956,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '完全相容電腦版 DiscordBotClient / Vencord 的 vencord-settings-backup.json 格式（包含所有插件開關、參數設定、themeLinks 與 quickCss）。',
+                          tr('完全相容電腦版 DiscordBotClient / Vencord 的 vencord-settings-backup.json 格式（包含所有插件開關、參數設定、themeLinks 與 quickCss）。'),
                           style: TextStyle(
                             color: p.textSecondary,
                             fontSize: 13,
@@ -973,15 +974,15 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                               final json = vc.exportVencordBackupJson();
                               Clipboard.setData(ClipboardData(text: json));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Text(
-                                      '已匯出 Vencord 備份 JSON 至剪貼簿'),
+                                      tr('已匯出 Vencord 備份 JSON 至剪貼簿')),
                                 ),
                               );
                             },
                             icon: const Icon(Icons.upload_file_rounded,
                                 size: 18),
-                            label: const Text('匯出 Vencord 設定 JSON (複製)'),
+                            label: Text(tr('匯出 Vencord 設定 JSON (複製)')),
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -990,7 +991,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                           child: OutlinedButton.icon(
                             onPressed: () => _showImportBackupDialog(p),
                             icon: const Icon(Icons.download_rounded, size: 18),
-                            label: const Text('匯入 Vencord 設定備份 JSON'),
+                            label: Text(tr('匯入 Vencord 設定備份 JSON')),
                           ),
                         ),
                       ],
@@ -1011,7 +1012,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: p.cardBg,
-        title: const Text('匯入 Vencord 備份 JSON'),
+        title: Text(tr('匯入 Vencord 備份 JSON')),
         content: TextField(
           controller: importCtrl,
           maxLines: 8,
@@ -1023,7 +1024,7 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             onPressed: () async {
@@ -1040,18 +1041,18 @@ class _VencordSettingsScreenState extends State<VencordSettingsScreen>
                 if (mounted) {
                   setState(() {});
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已成功匯入 Vencord 設定！')),
+                    SnackBar(content: Text(tr('已成功匯入 Vencord 設定！'))),
                   );
                 }
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('匯入失敗：$e')),
+                    SnackBar(content: Text(trf('匯入失敗：{0}', [e]))),
                   );
                 }
               }
             },
-            child: const Text('匯入'),
+            child: Text(tr('匯入')),
           ),
         ],
       ),
@@ -1128,19 +1129,19 @@ void showVencordRawModal(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: rawContent));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已複製原始文字內容')),
+                        SnackBar(content: Text(tr('已複製原始文字內容'))),
                       );
                     },
-                    child: const Text('複製文字'),
+                    child: Text(tr('複製文字')),
                   ),
                 FilledButton.tonal(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: formattedJson));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已複製 Raw JSON')),
+                      SnackBar(content: Text(tr('已複製 Raw JSON'))),
                     );
                   },
-                  child: const Text('複製 JSON'),
+                  child: Text(tr('複製 JSON')),
                 ),
               ],
             ),
@@ -1200,7 +1201,7 @@ void showVencordPermissionsModal(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '權限檢視器 — $title',
+              trf('權限檢視器 — {0}', [title]),
               style: TextStyle(
                 color: palette.textPrimary,
                 fontSize: 17.5,
@@ -1324,11 +1325,11 @@ void showVencordImageViewerModal(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: hiResUrl));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已複製高畫質圖片網址')),
+                      SnackBar(content: Text(tr('已複製高畫質圖片網址'))),
                     );
                   },
                   icon: const Icon(Icons.copy_rounded, size: 16),
-                  label: const Text('複製網址'),
+                  label: Text(tr('複製網址')),
                 ),
                 const SizedBox(width: 8),
                 FilledButton.tonalIcon(
@@ -1339,7 +1340,7 @@ void showVencordImageViewerModal(
                     }
                   },
                   icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                  label: const Text('開啟原圖'),
+                  label: Text(tr('開啟原圖')),
                 ),
               ],
             ),
@@ -1384,7 +1385,7 @@ void showWhoReactedSheet(
                   Text(emoji.name, style: const TextStyle(fontSize: 20)),
                 const SizedBox(width: 8),
                 Text(
-                  '表情反應成員 (:${emoji.name}:)',
+                  trf('表情反應成員 (:{0}:)', [emoji.name]),
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 16.5,
@@ -1410,7 +1411,7 @@ void showWhoReactedSheet(
                 if (users.isEmpty) {
                   return Center(
                     child: Text(
-                      '目前沒有反應成員紀錄',
+                      tr('目前沒有反應成員紀錄'),
                       style: TextStyle(color: palette.textMuted),
                     ),
                   );
@@ -1557,8 +1558,8 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
           onTap: () {
             if (!usable) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('此表情未啟用或目前頻道禁止使用外部伺服器表情反應'),
+                SnackBar(
+                  content: Text(tr('此表情未啟用或目前頻道禁止使用外部伺服器表情反應')),
                   duration: Duration(seconds: 2),
                 ),
               );
@@ -1686,7 +1687,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                   onChanged: (v) => setState(() => _query = v),
                   style: TextStyle(color: p.textPrimary, fontSize: 14),
                   decoration: InputDecoration(
-                    hintText: '搜尋所有伺服器與應用程式表情...',
+                    hintText: tr('搜尋所有伺服器與應用程式表情...'),
                     hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
                     prefixIcon:
                         Icon(Icons.search_rounded, size: 19, color: p.textMuted),
@@ -1722,7 +1723,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                     _categoryPill(
                       p: p,
                       keyId: null,
-                      child: const Text('全部',
+                      child: Text(tr('全部'),
                           style: TextStyle(
                               fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
@@ -1769,7 +1770,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                     _categoryPill(
                       p: p,
                       keyId: 'unicode',
-                      tooltip: '常用表情',
+                      tooltip: tr('常用表情'),
                       child: const Icon(Icons.emoji_emotions_outlined, size: 18),
                     ),
                   ],
@@ -1797,7 +1798,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                             ),
                             const SizedBox(width: 10),
                             Text(
-                              '正在同步各伺服器自訂表情...',
+                              tr('正在同步各伺服器自訂表情...'),
                               style:
                                   TextStyle(color: p.textMuted, fontSize: 13),
                             ),
@@ -1829,7 +1830,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                           iconUrl: g.iconUrl(size: 64),
                           fallbackText: g.initials,
                           title: g.id == widget.currentGuild?.id
-                              ? '${g.name} • 當前伺服器 (${gEmojis.length})'
+                              ? trf('{0} • 當前伺服器 ({1})', [g.name, gEmojis.length])
                               : '${g.name} (${gEmojis.length})',
                         ),
                         const SizedBox(height: 8),
@@ -1842,7 +1843,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                             _selectedCategoryKey == 'unicode') &&
                         q.isEmpty) ...[
                       Text(
-                        '常用表情',
+                        tr('常用表情'),
                         style: TextStyle(
                           color: p.textSecondary,
                           fontSize: 13,
@@ -1866,7 +1867,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                         padding: const EdgeInsets.symmetric(vertical: 32),
                         child: Center(
                           child: Text(
-                            '找不到符合「$_query」的伺服器或應用程式表情',
+                            trf('找不到符合「{0}」的伺服器或應用程式表情', [_query]),
                             style: TextStyle(color: p.textMuted, fontSize: 13.5),
                           ),
                         ),
@@ -1972,13 +1973,13 @@ void showTimestampPickerSheet(
 }) {
   DateTime chosen = DateTime.now();
   String style = 'f';
-  const styles = [
-    ('f', '完整日期與時間'),
-    ('R', '相對時間 (幾分鐘前 / 後)'),
-    ('t', '短時間 (HH:MM)'),
-    ('T', '長時間 (HH:MM:SS)'),
-    ('d', '短日期 (YYYY/MM/DD)'),
-    ('D', '長日期'),
+  final styles = [
+    ('f', tr('完整日期與時間')),
+    ('R', tr('相對時間 (幾分鐘前 / 後)')),
+    ('t', tr('短時間 (HH:MM)')),
+    ('T', tr('長時間 (HH:MM:SS)')),
+    ('d', tr('短日期 (YYYY/MM/DD)')),
+    ('D', tr('長日期')),
   ];
 
   showModalBottomSheet<void>(
@@ -1995,7 +1996,7 @@ void showTimestampPickerSheet(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '插入動態時間戳記 (SendTimestamps)',
+                  tr('插入動態時間戳記 (SendTimestamps)'),
                   style: TextStyle(
                     color: palette.textPrimary,
                     fontSize: 17,
@@ -2088,7 +2089,7 @@ void showTimestampPickerSheet(
                         Navigator.of(ctx).pop();
                         onInsert('$md ');
                       },
-                      child: const Text('插入'),
+                      child: Text(tr('插入')),
                     ),
                   ],
                 ),
@@ -2156,7 +2157,7 @@ class HiddenChannelLockView extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                '此為隱藏頻道 (#${channel.name})',
+                trf('此為隱藏頻道 (#{0})', [channel.name]),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: palette.textPrimary,
@@ -2166,7 +2167,7 @@ class HiddenChannelLockView extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                '目前機器人帳號沒有檢視此頻道的權限 (ShowHiddenChannels)。',
+                tr('目前機器人帳號沒有檢視此頻道的權限 (ShowHiddenChannels)。'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: palette.textSecondary, fontSize: 13.5),
               ),
@@ -2190,7 +2191,7 @@ class HiddenChannelLockView extends StatelessWidget {
               ],
               const SizedBox(height: 14),
               Text(
-                '頻道建立日期：${created.year}年${created.month}月${created.day}日',
+                trf('頻道建立日期：{0}年{1}月{2}日', [created.year, created.month, created.day]),
                 style: TextStyle(color: palette.textMuted, fontSize: 12.5),
               ),
               if (allowedRoles.isNotEmpty) ...[

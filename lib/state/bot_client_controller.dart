@@ -10,6 +10,7 @@ import '../services/discord_gateway_service.dart';
 import '../services/discord_rest_client.dart';
 import '../services/discord_voice_service.dart';
 import '../services/vencord_engine.dart';
+import '../l10n/strings.dart';
 
 class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const String _kAccountsKey = 'dbc_saved_accounts_v1';
@@ -235,15 +236,15 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       if (name.isEmpty) continue;
       switch (type) {
         case 0:
-          return '正在玩 $name';
+          return trf('正在玩 {0}', [name]);
         case 1:
-          return '正在直播 $name';
+          return trf('正在直播 {0}', [name]);
         case 2:
-          return '正在聽 $name';
+          return trf('正在聽 {0}', [name]);
         case 3:
-          return '正在觀看 $name';
+          return trf('正在觀看 {0}', [name]);
         case 5:
-          return '正在競爭 $name';
+          return trf('正在競爭 {0}', [name]);
       }
     }
     return null;
@@ -1253,7 +1254,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     if (cmd == '/purge') {
       final amount = parts.length >= 2 ? (int.tryParse(parts[1]) ?? -1) : -1;
       if (amount < 2 || amount > 100) {
-        throw const DiscordApiException(400, '/purge 數量必須介於 2 到 100 之間');
+        throw DiscordApiException(400, tr('/purge 數量必須介於 2 到 100 之間'));
       }
       final cutoffMs =
           DateTime.now().millisecondsSinceEpoch - (14 * 86400 * 1000);
@@ -1265,8 +1266,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           .map((m) => m.id)
           .toList();
       if (validIds.length < 2) {
-        throw const DiscordApiException(
-            400, '可批次刪除的訊息不足 2 則（僅能刪除 14 天內的訊息）');
+        throw DiscordApiException(
+            400, tr('可批次刪除的訊息不足 2 則（僅能刪除 14 天內的訊息）'));
       }
       await _rest!.bulkDeleteMessages(chId, validIds);
       final idSet = validIds.toSet();
@@ -1278,7 +1279,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           messagesNotifier.value = List.unmodifiable(next);
         }
       }
-      return '已批次刪除 ${validIds.length} 則訊息';
+      return trf('已批次刪除 {0} 則訊息', [validIds.length]);
     }
 
     if (cmd == '/switch' && parts.length >= 3) {
@@ -1287,15 +1288,15 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         final id = int.tryParse(parts[2]) ?? -1;
         if (id < 0 || id >= totalShards) {
           throw DiscordApiException(
-              400, 'Shard ID 必須介於 0 到 ${totalShards - 1} 之間');
+              400, trf('Shard ID 必須介於 0 到 {0} 之間', [totalShards - 1]));
         }
         await _gateway?.switchShard(id);
-        return '已切換至 Shard $id / $totalShards';
+        return trf('已切換至 Shard {0} / {1}', [id, totalShards]);
       } else if (sub == 'guild') {
         final gId = parts[2];
         final gBig = BigInt.tryParse(gId);
         if (gBig == null) {
-          throw const DiscordApiException(400, '無效的伺服器 ID');
+          throw DiscordApiException(400, tr('無效的伺服器 ID'));
         }
         if (totalShards > 1) {
           final targetShard =
@@ -1307,7 +1308,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         if (_guilds.containsKey(gId)) {
           await selectGuild(gId);
         }
-        return '已切換至伺服器 $gId';
+        return trf('已切換至伺服器 {0}', [gId]);
       }
     }
 
@@ -1317,16 +1318,16 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         parts[1].toLowerCase() == 'bitrate') {
       if (!vencord.getSetting<bool>(
           'BotClient', 'overrideVoiceChannelBitrate', false)) {
-        throw const DiscordApiException(
+        throw DiscordApiException(
           400,
-          '請先於 設定 > Vencord > BotClient 開啟 Override Voice Channel Bitrate',
+          tr('請先於 設定 > Vencord > BotClient 開啟 Override Voice Channel Bitrate'),
         );
       }
       final kbps = int.tryParse(parts[2]) ?? -1;
       if (kbps < 6 || kbps > 5000) {
-        throw const DiscordApiException(
+        throw DiscordApiException(
           400,
-          'Bitrate 數值必須介於 6 到 5000 Kbps 之間',
+          tr('Bitrate 數值必須介於 6 到 5000 Kbps 之間'),
         );
       }
       await vencord.setPluginSetting(
@@ -1335,7 +1336,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         kbps,
         _prefs,
       );
-      return '已將預設語音位元率覆寫設定為 $kbps Kbps';
+      return trf('已將預設語音位元率覆寫設定為 {0} Kbps', [kbps]);
     }
 
     // Execute any enabled Custom Vencord Userplugin commands
@@ -1369,7 +1370,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   }) async {
     final chId = _selectedChannelId;
     if (chId == null || _rest == null) {
-      throw const DiscordApiException(400, '尚未選擇頻道');
+      throw DiscordApiException(400, tr('尚未選擇頻道'));
     }
 
     var processedContent = rawPayloadOverride == null
@@ -1690,17 +1691,17 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     bool targetIsBot = false,
   }) async {
     if (_rest == null) {
-      throw const DiscordApiException(400, '尚未登入');
+      throw DiscordApiException(400, tr('尚未登入'));
     }
     if (targetIsBot) {
-      throw const DiscordApiException(400, '無法傳送私人訊息給其他機器人');
+      throw DiscordApiException(400, tr('無法傳送私人訊息給其他機器人'));
     }
     if (userId.trim() == _activeAccount?.id) {
-      throw const DiscordApiException(400, '無法與自己開啟私訊');
+      throw DiscordApiException(400, tr('無法與自己開啟私訊'));
     }
     final dm = await _rest!.createDirectMessage(userId);
     if (dm.dmRecipient?.bot == true) {
-      throw const DiscordApiException(400, '無法傳送私人訊息給其他機器人');
+      throw DiscordApiException(400, tr('無法傳送私人訊息給其他機器人'));
     }
     _dmChannels.remove(dm.id);
     final existing = Map<String, DiscordChannel>.from(_dmChannels);
@@ -1974,16 +1975,16 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     SoundboardSound sound,
   ) async {
     if (_rest == null) {
-      throw const DiscordApiException(400, '尚未登入');
+      throw DiscordApiException(400, tr('尚未登入'));
     }
     final gId = _activeVoiceGuildId;
     if (gId == null || _activeVoiceChannelId != channelId) {
-      throw const DiscordApiException(400, '請先加入此語音頻道再播放音效板');
+      throw DiscordApiException(400, tr('請先加入此語音頻道再播放音效板'));
     }
     final botId = _activeAccount?.id;
     final botVs = botId != null ? _guilds[gId]?.voiceStates[botId] : null;
     if (botVs != null && (botVs.mute || botVs.deaf || botVs.suppress)) {
-      throw const DiscordApiException(403, '機器人目前被伺服器靜音或處於舞台聽眾席，無法播放音效板');
+      throw DiscordApiException(403, tr('機器人目前被伺服器靜音或處於舞台聽眾席，無法播放音效板'));
     }
 
     // Discord rejects send-soundboard-sound if self_mute or self_deaf is true
@@ -2438,7 +2439,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
                   user?['global_name'] as String? ??
                   user?['username'] as String? ??
                   'Someone';
-              typingBannerNotifier.value = '$name 正在輸入...';
+              typingBannerNotifier.value = trf('{0} 正在輸入...', [name]);
               _typingClearTimer?.cancel();
               _typingClearTimer = Timer(const Duration(seconds: 7), () {
                 typingBannerNotifier.value = null;

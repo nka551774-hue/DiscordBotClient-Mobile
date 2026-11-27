@@ -5,6 +5,7 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'user_profile_sheet.dart';
+import '../../l10n/strings.dart';
 
 /// Opens the authentic Discord Mobile Voice Channel Sheet:
 /// - When NOT connected to [channel]: displays the "Join Voice" preview sheet
@@ -82,13 +83,13 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
       await Clipboard.setData(ClipboardData(text: url));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已複製語音頻道邀請連結：$url')),
+          SnackBar(content: Text(trf('已複製語音頻道邀請連結：{0}', [url]))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('無法建立邀請連結：$e')),
+          SnackBar(content: Text(trf('無法建立邀請連結：{0}', [e]))),
         );
       }
     }
@@ -305,14 +306,14 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
         participants.map((vs) => _who(ctrl, guild, vs, size: 96)).toList();
     final String subtitle;
     if (infos.isEmpty) {
-      subtitle = '目前沒有人在語音頻道中';
+      subtitle = tr('目前沒有人在語音頻道中');
     } else if (infos.length == 1) {
       subtitle = infos[0].name;
     } else if (infos.length == 2) {
       subtitle = '${infos[0].name}、${infos[1].name}';
     } else {
       subtitle =
-          '${infos[0].name}、${infos[1].name} 和其他 ${infos.length - 2} 人';
+          trf('{0}、{1} 和其他 {2} 人', [infos[0].name, infos[1].name, infos.length - 2]);
     }
     final streamers = participants.where((vs) => vs.selfStream).toList();
 
@@ -381,7 +382,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                 if (streamers.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Text(
-                    '${_who(ctrl, guild, streamers.first).name} 正在直播...',
+                    trf('{0} 正在直播...', [_who(ctrl, guild, streamers.first).name]),
                     style: TextStyle(color: p.textSecondary, fontSize: 13),
                   ),
                   const SizedBox(height: 8),
@@ -399,8 +400,8 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
-                        '直播中',
+                      child: Text(
+                        tr('直播中'),
                         style: TextStyle(
                           color: Colors.black,
                           fontSize: 13.5,
@@ -536,7 +537,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                   );
                 },
                 child: Text(
-                  isConnectedElsewhere ? '切換至此語音頻道' : '加入語音',
+                  isConnectedElsewhere ? tr('切換至此語音頻道') : tr('加入語音'),
                   style: const TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.w700,
@@ -686,10 +687,10 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
               ),
             ),
             if (!ctrl.isVoiceConnected)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 4),
                 child: Text(
-                  '連線中...',
+                  tr('連線中...'),
                   style: TextStyle(
                     color: Color(0xCCFFFFFF),
                     fontSize: 12.5,
@@ -699,9 +700,9 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
               ),
             Expanded(
               child: participants.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
-                        '等待其他人加入...',
+                        tr('等待其他人加入...'),
                         style: TextStyle(color: Color(0xCCFFFFFF)),
                       ),
                     )
@@ -843,8 +844,8 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                     color: DiscordPalette.danger,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Text(
-                    '直播',
+                  child: Text(
+                    tr('直播'),
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -909,8 +910,8 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                           ),
                           title: Text(
                             ctrl.isVoiceConnected
-                                ? (ms != null ? '語音已連線 • $ms ms' : '語音已連線')
-                                : '連線中...',
+                                ? (ms != null ? trf('語音已連線 • {0} ms', [ms]) : tr('語音已連線'))
+                                : tr('連線中...'),
                             style: TextStyle(color: p.textPrimary),
                           ),
                         );
@@ -920,7 +921,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                     ListTile(
                       leading: Icon(Icons.music_note_rounded,
                           color: p.textPrimary),
-                      title: Text('音效板',
+                      title: Text(tr('音效板'),
                           style: TextStyle(color: p.textPrimary)),
                       onTap: () {
                         Navigator.of(ctx).pop();
@@ -931,7 +932,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                     ListTile(
                       leading: Icon(Icons.person_add_alt_1_rounded,
                           color: p.textPrimary),
-                      title: Text('邀請',
+                      title: Text(tr('邀請'),
                           style: TextStyle(color: p.textPrimary)),
                       onTap: () {
                         Navigator.of(ctx).pop();
@@ -942,7 +943,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                     ListTile(
                       leading: const Icon(Icons.call_end_rounded,
                           color: DiscordPalette.danger),
-                      title: const Text('中斷連線',
+                      title: Text(tr('中斷連線'),
                           style: TextStyle(color: DiscordPalette.danger)),
                       onTap: () async {
                         Navigator.of(ctx).pop();
@@ -985,7 +986,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
             icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
             activeWhite: false,
             backgroundColor: dockBtnBg,
-            tooltip: muted ? '取消靜音' : '靜音',
+            tooltip: muted ? tr('取消靜音') : tr('靜音'),
             onTap: () {
               HapticFeedback.selectionClick();
               ctrl.toggleVoiceMute();
@@ -995,7 +996,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
             icon: deafened ? Icons.headset_off_rounded : Icons.headset_rounded,
             activeWhite: deafened,
             backgroundColor: dockBtnBg,
-            tooltip: deafened ? '取消拒聽' : '拒聽',
+            tooltip: deafened ? tr('取消拒聽') : tr('拒聽'),
             onTap: () {
               HapticFeedback.selectionClick();
               ctrl.toggleVoiceDeaf();
@@ -1005,14 +1006,14 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
             icon: Icons.chat_bubble_rounded,
             activeWhite: hasUnreadText,
             backgroundColor: dockBtnBg,
-            tooltip: '文字聊天室',
+            tooltip: tr('文字聊天室'),
             onTap: () => widget.onOpenVoiceTextChat(channel.id, guild.id),
           ),
           _VoiceDockCircleButton(
             icon: Icons.rocket_launch_rounded,
             activeWhite: false,
             backgroundColor: dockBtnBg,
-            tooltip: '活動與音效板',
+            tooltip: tr('活動與音效板'),
             onTap: () {
               HapticFeedback.selectionClick();
               _openSoundboardModal(context, ctrl, p, guild, channel);
@@ -1142,14 +1143,14 @@ class _SoundboardBottomSheetState extends State<_SoundboardBottomSheet> {
       await widget.controller.playSoundboardSound(widget.channel.id, sound);
       if (!mounted) return;
       setState(() {
-        _statusHint = '正在播放：${sound.name}';
+        _statusHint = trf('正在播放：{0}', [sound.name]);
         _statusIsError = false;
       });
       await Future<void>.delayed(const Duration(milliseconds: 550));
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _statusHint = e is Object ? '$e' : '播放音效失敗';
+        _statusHint = e is Object ? '$e' : tr('播放音效失敗');
         _statusIsError = true;
       });
     } finally {
@@ -1207,7 +1208,7 @@ class _SoundboardBottomSheetState extends State<_SoundboardBottomSheet> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          '音效板',
+                          tr('音效板'),
                           style: TextStyle(
                             color: p.textPrimary,
                             fontSize: 18,
@@ -1229,7 +1230,7 @@ class _SoundboardBottomSheetState extends State<_SoundboardBottomSheet> {
                     onChanged: (v) => setState(() => _query = v),
                     style: TextStyle(color: p.textPrimary, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: '搜尋音效板...',
+                      hintText: tr('搜尋音效板...'),
                       hintStyle: TextStyle(color: p.textMuted, fontSize: 14),
                       prefixIcon: Icon(Icons.search_rounded,
                           color: p.textMuted, size: 19),
@@ -1272,7 +1273,7 @@ class _SoundboardBottomSheetState extends State<_SoundboardBottomSheet> {
                               defaultFiltered.isEmpty)
                           ? Center(
                               child: Text(
-                                '找不到符合的音效',
+                                tr('找不到符合的音效'),
                                 style: TextStyle(
                                     color: p.textMuted, fontSize: 14),
                               ),
@@ -1289,13 +1290,13 @@ class _SoundboardBottomSheetState extends State<_SoundboardBottomSheet> {
                                   const SizedBox(height: 18),
                                 ],
                                 if (defaultFiltered.isNotEmpty) ...[
-                                  _sectionTitle(p, 'Discord 預設音效'),
+                                  _sectionTitle(p, tr('Discord 預設音效')),
                                   const SizedBox(height: 8),
                                   _buildSoundGrid(p, defaultFiltered),
                                   const SizedBox(height: 18),
                                 ],
                                 if (otherFiltered.isNotEmpty) ...[
-                                  _sectionTitle(p, '其他伺服器音效'),
+                                  _sectionTitle(p, tr('其他伺服器音效')),
                                   const SizedBox(height: 8),
                                   _buildSoundGrid(p, otherFiltered),
                                 ],

@@ -8,6 +8,7 @@ import 'discord_icons.dart';
 import 'member_moderation.dart';
 import 'settings_sheet.dart';
 import 'vencord_sheets.dart';
+import '../../l10n/strings.dart';
 
 /// Opens the authentic 2025/2026 Discord Mobile User Profile Modal Sheet
 /// for any user or bot (in Guild channels, Direct Messages, Member List, or Voice Rooms).
@@ -145,7 +146,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
   }
 
   String _formatDateZh(DateTime dt) =>
-      '${dt.year}年${dt.month}月${dt.day}日';
+      trf('{0}年{1}月{2}日', [dt.year, dt.month, dt.day]);
 
   void _showMoreActionsMenu(
     BuildContext context, {
@@ -167,7 +168,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
               children: [
                 ListTile(
                   leading: Icon(Icons.copy_rounded, color: p.textPrimary),
-                  title: Text('複製使用者 ID',
+                  title: Text(tr('複製使用者 ID'),
                       style: TextStyle(color: p.textPrimary)),
                   subtitle: Text(_user.id,
                       style: TextStyle(color: p.textMuted, fontSize: 12)),
@@ -175,7 +176,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                     Clipboard.setData(ClipboardData(text: _user.id));
                     Navigator.of(menuCtx).pop();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已複製使用者 ID')),
+                      SnackBar(content: Text(tr('已複製使用者 ID'))),
                     );
                   },
                 ),
@@ -186,7 +187,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                   ListTile(
                     leading: Icon(Icons.admin_panel_settings_outlined,
                         color: p.textPrimary),
-                    title: Text('檢視成員權限 (Permissions)',
+                    title: Text(tr('檢視成員權限 (Permissions)'),
                         style: TextStyle(color: p.textPrimary)),
                     onTap: () {
                       Navigator.of(menuCtx).pop();
@@ -216,7 +217,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                   Divider(height: 1, color: p.border),
                   ListTile(
                     leading: Icon(Icons.code_rounded, color: p.textPrimary),
-                    title: Text('檢視原始資料 (View Raw)',
+                    title: Text(tr('檢視原始資料 (View Raw)'),
                         style: TextStyle(color: p.textPrimary)),
                     onTap: () {
                       Navigator.of(menuCtx).pop();
@@ -299,9 +300,9 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
             _member?.guildBanner != null);
     final badges = [
       if (hasNitro)
-        const DiscordBadgeInfo(
+        DiscordBadgeInfo(
           id: 'premium',
-          description: 'Nitro 會員',
+          description: tr('Nitro 會員'),
           iconHash: '2ba85e8026a8614b640c2837bcdfe21b',
         ),
       ...(isSelf ? acc.realBadges : _user.realBadges),
@@ -354,7 +355,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                           ? () => showVencordImageViewerModal(
                                 context,
                                 palette: p,
-                                title: '$effectiveDisplayName 橫幅',
+                                title: trf('{0} 橫幅', [effectiveDisplayName]),
                                 imageUrl: bannerUrl,
                               )
                           : null,
@@ -395,7 +396,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                             ? () => showVencordImageViewerModal(
                                   context,
                                   palette: p,
-                                  title: '$effectiveDisplayName 頭像',
+                                  title: trf('{0} 頭像', [effectiveDisplayName]),
                                   imageUrl: avatarUrl,
                                 )
                             : null,
@@ -539,8 +540,8 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                                     showDiscordStatusSheet(context, ctrl),
                                 icon: const Icon(Icons.edit_rounded,
                                     size: 17, color: Colors.white),
-                                label: const Text(
-                                  '變更狀態與活動',
+                                label: Text(
+                                  tr('變更狀態與活動'),
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 14.5,
@@ -604,7 +605,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                                             : Colors.white,
                                       ),
                                 label: Text(
-                                  alreadyInThisDm ? '返回私訊對話' : '傳送訊息',
+                                  alreadyInThisDm ? tr('返回私訊對話') : tr('傳送訊息'),
                                   style: TextStyle(
                                     color: alreadyInThisDm
                                         ? p.textPrimary
@@ -632,14 +633,14 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                                       ClipboardData(text: _user.id));
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text('已複製機器人 ID')),
+                                    SnackBar(
+                                        content: Text(tr('已複製機器人 ID'))),
                                   );
                                 },
                                 icon: Icon(Icons.copy_rounded,
                                     size: 17, color: p.textPrimary),
                                 label: Text(
-                                  '複製機器人 ID',
+                                  tr('複製機器人 ID'),
                                   style: TextStyle(
                                     color: p.textPrimary,
                                     fontSize: 14.5,
@@ -668,7 +669,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '簡介',
+                              tr('簡介'),
                               style: TextStyle(
                                 color: p.textSecondary,
                                 fontSize: 12.5,
@@ -703,7 +704,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '加入時間',
+                            tr('加入時間'),
                             style: TextStyle(
                               color: p.textSecondary,
                               fontSize: 12.5,
@@ -782,7 +783,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '身分組',
+                              tr('身分組'),
                               style: TextStyle(
                                 color: p.textSecondary,
                                 fontSize: 12.5,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../l10n/strings.dart';
 
 class MediaViewerItem {
   /// Image shown in the viewer.
@@ -116,7 +117,7 @@ class _MediaViewerPageState extends State<_MediaViewerPage> {
     final mm = t.minute.toString().padLeft(2, '0');
     final now = DateTime.now();
     if (t.year == now.year && t.month == now.month && t.day == now.day) {
-      return '今天 $hh:$mm';
+      return trf('今天 {0}:{1}', [hh, mm]);
     }
     return '${t.year}/${t.month}/${t.day} $hh:$mm';
   }
@@ -134,7 +135,7 @@ class _MediaViewerPageState extends State<_MediaViewerPage> {
             ListTile(
               leading: const Icon(Icons.open_in_browser_rounded,
                   color: Colors.white),
-              title: const Text('在瀏覽器開啟 / 儲存',
+              title: Text(tr('在瀏覽器開啟 / 儲存'),
                   style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -147,7 +148,7 @@ class _MediaViewerPageState extends State<_MediaViewerPage> {
             ListTile(
               leading: const Icon(Icons.link_rounded, color: Colors.white),
               title:
-                  const Text('複製連結', style: TextStyle(color: Colors.white)),
+                  Text(tr('複製連結'), style: TextStyle(color: Colors.white)),
               onTap: () {
                 Clipboard.setData(ClipboardData(text: link));
                 Navigator.of(ctx).pop();

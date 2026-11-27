@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'l10n/strings.dart';
 import 'state/bot_client_controller.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/login_screen.dart';
 import 'ui/theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppLanguage.load();
+  // Draw behind status / navigation bars; each screen paints its own colour there.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.black,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
@@ -45,11 +52,14 @@ class _DiscordBotClientMobileAppState extends State<DiscordBotClientMobileApp> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _controller,
+      listenable: Listenable.merge([_controller, AppLanguage.current]),
       builder: (context, _) {
         final oled = _controller.ecoSettings.oledBlackMode;
+        final lang = AppLanguage.current.value;
 
+        // Keyed by language so every screen rebuilds its tr() strings.
         return MaterialApp(
+          key: ValueKey(lang),
           title: 'Discord',
           debugShowCheckedModeBanner: false,
           theme: buildAppTheme(oledBlack: oled),

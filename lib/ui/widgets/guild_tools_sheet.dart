@@ -10,6 +10,7 @@ import 'media_viewer.dart';
 import 'member_moderation.dart';
 import 'user_profile_sheet.dart';
 import 'vencord_sheets.dart';
+import '../../l10n/strings.dart';
 
 /// Authentic Discord Mobile Right Side-Panel / Drawer:
 /// - Channel Header + Topic
@@ -124,12 +125,12 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     final buckets = <String, _RoleGroupBucket>{};
     final ungrouped = _RoleGroupBucket(
       id: 'members',
-      title: splitByPresence ? '線上' : '成員',
+      title: splitByPresence ? tr('線上') : tr('成員'),
       position: -1,
     );
     final offline = _RoleGroupBucket(
       id: 'offline',
-      title: '離線',
+      title: tr('離線'),
       position: -2,
     );
     final selfId = ctrl.activeAccount?.id;
@@ -191,7 +192,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
             Padding(
               padding: const EdgeInsets.all(14),
               child: Text(
-                '討論串',
+                tr('討論串'),
                 style: TextStyle(
                   color: p.textPrimary,
                   fontSize: 17,
@@ -210,7 +211,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                   final threads = snap.data ?? const [];
                   if (threads.isEmpty) {
                     return Center(
-                      child: Text('此頻道尚無討論串',
+                      child: Text(tr('此頻道尚無討論串'),
                           style: TextStyle(color: p.textMuted)),
                     );
                   }
@@ -249,18 +250,18 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: p.cardBg,
-        title: const Text('頻道設定'),
+        title: Text(tr('頻道設定')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameCtrl,
-              decoration: const InputDecoration(labelText: '頻道名稱'),
+              decoration: InputDecoration(labelText: tr('頻道名稱')),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: topicCtrl,
-              decoration: const InputDecoration(labelText: '頻道主題'),
+              decoration: InputDecoration(labelText: tr('頻道主題')),
             ),
           ],
         ),
@@ -272,11 +273,11 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
               widget.onClosePanel?.call();
               await widget.controller.rest?.deleteChannel(channel.id);
             },
-            child: const Text('刪除頻道'),
+            child: Text(tr('刪除頻道')),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: Text(tr('取消')),
           ),
           FilledButton(
             onPressed: () async {
@@ -287,7 +288,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                 topic: topicCtrl.text.trim(),
               );
             },
-            child: const Text('儲存'),
+            child: Text(tr('儲存')),
           ),
         ],
       ),
@@ -347,7 +348,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
           ),
         ),
         subtitle: Text(
-          m.content.isEmpty ? '[附件 / Embed]' : m.content,
+          m.content.isEmpty ? tr('[附件 / Embed]') : m.content,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: p.textSecondary, fontSize: 13.5),
@@ -382,7 +383,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                     onChanged: (v) => setM(() => q = v),
                     style: TextStyle(color: p.textPrimary),
                     decoration: InputDecoration(
-                      hintText: '搜尋此頻道已載入的訊息',
+                      hintText: tr('搜尋此頻道已載入的訊息'),
                       prefixIcon:
                           Icon(Icons.search_rounded, color: p.textMuted),
                       filled: true,
@@ -396,7 +397,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                   const SizedBox(height: 8),
                   Expanded(
                     child: needle.isNotEmpty && res.isEmpty
-                        ? _emptyTab(p, '找不到符合的訊息')
+                        ? _emptyTab(p, tr('找不到符合的訊息'))
                         : ListView.builder(
                             controller: sc,
                             itemCount: res.length,
@@ -439,7 +440,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Text(
-                  '已於 Vencord > BotClient 停用成員列表',
+                  tr('已於 Vencord > BotClient 停用成員列表'),
                   style: TextStyle(color: p.textMuted, fontSize: 13),
                 ),
               ),
@@ -451,7 +452,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
               onSubmitted: (q) => _ensureMembersLoaded(query: q),
               style: TextStyle(color: p.textPrimary, fontSize: 14),
               decoration: InputDecoration(
-                hintText: '搜尋成員',
+                hintText: tr('搜尋成員'),
                 hintStyle: TextStyle(color: p.textMuted, fontSize: 13.5),
                 prefixIcon:
                     Icon(Icons.search_rounded, size: 19, color: p.textMuted),
@@ -514,7 +515,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
         for (final a in m.attachments)
           if (a.isImage) a,
     ];
-    if (imgs.isEmpty) return _emptyTab(p, '已載入的訊息中沒有媒體');
+    if (imgs.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有媒體'));
     return GridView.builder(
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -547,7 +548,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
 
   Widget _pinsTab(DiscordPalette p, DiscordChannel channel) {
     final rest = widget.controller.rest;
-    if (rest == null) return _emptyTab(p, '尚未連線');
+    if (rest == null) return _emptyTab(p, tr('尚未連線'));
     if (_pinsFor != channel.id || _pinsFuture == null) {
       _pinsFor = channel.id;
       _pinsFuture = rest.getPinnedMessages(channel.id);
@@ -559,7 +560,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
           return const Center(child: CircularProgressIndicator());
         }
         final pins = snap.data ?? const <DiscordMessage>[];
-        if (pins.isEmpty) return _emptyTab(p, '此頻道目前沒有任何釘選訊息');
+        if (pins.isEmpty) return _emptyTab(p, tr('此頻道目前沒有任何釘選訊息'));
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: pins.length,
@@ -576,7 +577,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       for (final m in _loadedMessages)
         for (final mt in re.allMatches(m.content)) mt.group(0)!,
     ];
-    if (links.isEmpty) return _emptyTab(p, '已載入的訊息中沒有連結');
+    if (links.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有連結'));
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       itemCount: links.length,
@@ -605,7 +606,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
         for (final a in m.attachments)
           if (!a.isImage) a,
     ];
-    if (files.isEmpty) return _emptyTab(p, '已載入的訊息中沒有檔案');
+    if (files.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有檔案'));
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       itemCount: files.length,
@@ -682,7 +683,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       );
     }
 
-    const tabs = ['成員', '媒體', '釘選', '連結', '檔案'];
+    final tabs = [tr('成員'), tr('媒體'), tr('釘選'), tr('連結'), tr('檔案')];
     return DefaultTabController(
       length: tabs.length,
       child: Container(
@@ -737,21 +738,21 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                   _circleAction(
                     p,
                     icon: Icons.search_rounded,
-                    label: '搜尋',
+                    label: tr('搜尋'),
                     onTap: () => _showLocalSearch(p),
                   ),
                   if (!channel.isDm && !channel.isThread)
                     _circleAction(
                       p,
                       icon: Icons.forum_outlined,
-                      label: '討論串',
+                      label: tr('討論串'),
                       onTap: () => _showThreadsSheet(channel, p),
                     ),
                   if (!channel.isDm)
                     _circleAction(
                       p,
                       icon: Icons.person_add_alt_1_rounded,
-                      label: '邀請',
+                      label: tr('邀請'),
                       onTap: () async {
                         try {
                           final url =
@@ -759,7 +760,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                           await Clipboard.setData(ClipboardData(text: url));
                           if (mounted) {
                             ScaffoldMessenger.of(this.context).showSnackBar(
-                              SnackBar(content: Text('已複製邀請連結：$url')),
+                              SnackBar(content: Text(trf('已複製邀請連結：{0}', [url]))),
                             );
                           }
                         } catch (_) {}
@@ -769,7 +770,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                     _circleAction(
                       p,
                       icon: Icons.settings_rounded,
-                      label: '設定',
+                      label: tr('設定'),
                       onTap: () => _showChannelEditDialog(channel),
                     ),
                   if (!channel.isDm &&
@@ -777,7 +778,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                     _circleAction(
                       p,
                       icon: Icons.admin_panel_settings_outlined,
-                      label: '權限',
+                      label: tr('權限'),
                       onTap: () => showVencordPermissionsModal(
                         context,
                         palette: p,

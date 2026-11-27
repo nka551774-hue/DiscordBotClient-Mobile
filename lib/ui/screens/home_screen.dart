@@ -14,6 +14,7 @@ import '../widgets/settings_sheet.dart';
 import '../widgets/user_profile_sheet.dart';
 import '../widgets/vencord_sheets.dart';
 import '../widgets/voice_channel_sheet.dart';
+import '../../l10n/strings.dart';
 
 /// Authentic 2025/2026 Discord Mobile 3-Panel Gesture Architecture:
 /// - Panel -1.0 (Left): Server Rail + Channel/DM List + Clean Solid Floating You Bar
@@ -204,12 +205,12 @@ class _HomeScreenState extends State<HomeScreen>
                     children: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(),
-                        child: Text('取消',
+                        child: Text(tr('取消'),
                             style: TextStyle(color: p.textSecondary)),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          '新訊息',
+                          tr('新訊息'),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 17,
@@ -258,7 +259,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text('開始對話'),
+                            : Text(tr('開始對話')),
                       ),
                     ],
                   ),
@@ -269,11 +270,11 @@ class _HomeScreenState extends State<HomeScreen>
                     autofocus: true,
                     style: TextStyle(color: p.textPrimary, fontSize: 15),
                     decoration: InputDecoration(
-                      prefixText: '收件者：',
+                      prefixText: tr('收件者：'),
                       prefixStyle: TextStyle(color: p.textMuted, fontSize: 15),
-                      hintText: '搜尋或輸入 User ID',
+                      hintText: tr('搜尋或輸入 User ID'),
                       hintStyle: TextStyle(color: p.textMuted, fontSize: 15),
-                      helperText: errorText ?? '輸入單一使用者的 User ID 以開啟私訊。',
+                      helperText: errorText ?? tr('輸入單一使用者的 User ID 以開啟私訊。'),
                       helperStyle: TextStyle(
                         color: errorText != null
                             ? DiscordPalette.red
@@ -307,7 +308,7 @@ class _HomeScreenState extends State<HomeScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             child: Text(
-              '通知',
+              tr('通知'),
               style: TextStyle(
                 color: p.textPrimary,
                 fontSize: 20,
@@ -326,7 +327,7 @@ class _HomeScreenState extends State<HomeScreen>
                             size: 46, color: p.textMuted),
                         const SizedBox(height: 10),
                         Text(
-                          '目前沒有任何提及或私訊通知',
+                          tr('目前沒有任何提及或私訊通知'),
                           style: TextStyle(
                             color: p.textSecondary,
                             fontSize: 15,
@@ -345,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen>
                       final ch = ctrl.findChannelById(msg.channelId);
                       final whereLabel = guild != null
                           ? '${guild.name}  •  #${ch?.name ?? 'channel'}'
-                          : '私人訊息';
+                          : tr('私人訊息');
 
                       return InkWell(
                         onTap: () async {
@@ -404,7 +405,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     ),
                                     Text(
                                       msg.content.isEmpty
-                                          ? '[附件 / Embed]'
+                                          ? tr('[附件 / Embed]')
                                           : msg.content,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
@@ -430,12 +431,12 @@ class _HomeScreenState extends State<HomeScreen>
   /// Discord mobile relative time used in DM list / notifications.
   static String _shortAgo(DateTime t) {
     final d = DateTime.now().difference(t);
-    if (d.inMinutes < 1) return '剛剛';
-    if (d.inHours < 1) return '${d.inMinutes} 分';
-    if (d.inDays < 1) return '${d.inHours} 小時';
-    if (d.inDays < 30) return '${d.inDays} 天';
-    if (d.inDays < 365) return '${d.inDays ~/ 30} 個月';
-    return '${d.inDays ~/ 365} 年';
+    if (d.inMinutes < 1) return tr('剛剛');
+    if (d.inHours < 1) return trf('{0} 分', [d.inMinutes]);
+    if (d.inDays < 1) return trf('{0} 小時', [d.inHours]);
+    if (d.inDays < 30) return trf('{0} 天', [d.inDays]);
+    if (d.inDays < 365) return trf('{0} 個月', [d.inDays ~/ 30]);
+    return trf('{0} 年', [d.inDays ~/ 365]);
   }
 
   /// Official channel details page (tap channel name / members icon).
@@ -484,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen>
             Padding(
               padding: const EdgeInsets.all(14),
               child: Text(
-                '釘選訊息',
+                tr('釘選訊息'),
                 style: TextStyle(
                   color: p.textPrimary,
                   fontSize: 17,
@@ -504,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen>
                   if (pins.isEmpty) {
                     return Center(
                       child: Text(
-                        '此頻道目前沒有任何釘選訊息',
+                        tr('此頻道目前沒有任何釘選訊息'),
                         style: TextStyle(color: p.textMuted, fontSize: 13.5),
                       ),
                     );
@@ -531,7 +532,7 @@ class _HomeScreenState extends State<HomeScreen>
                           ),
                         ),
                         subtitle: Text(
-                          m.content.isEmpty ? '[Embed / 附件]' : m.content,
+                          m.content.isEmpty ? tr('[Embed / 附件]') : m.content,
                           style: TextStyle(color: p.textSecondary),
                         ),
                         onTap: () => showUserProfileSheet(
@@ -644,7 +645,9 @@ class _HomeScreenState extends State<HomeScreen>
             }
           },
           child: Scaffold(
-            backgroundColor: p.railBg,
+            // Status-bar / home-indicator areas take the colour of the visible
+            // panel, so an open chat has no dark bars above or below it.
+            backgroundColor: v > -0.5 ? p.chatBg : p.railBg,
             body: SafeArea(
               bottom: v > -0.5,
               child: Column(
@@ -1122,7 +1125,7 @@ class _HomeScreenState extends State<HomeScreen>
                 Icon(_homeTab == 0 ? Icons.home_rounded : Icons.home_outlined),
                 dot: hasUnreadDms && _homeTab != 0,
               ),
-              label: '首頁',
+              label: tr('首頁'),
             ),
             tab(
               index: 1,
@@ -1132,7 +1135,7 @@ class _HomeScreenState extends State<HomeScreen>
                     : Icons.notifications_none_rounded),
                 count: badgeCount,
               ),
-              label: '通知',
+              label: tr('通知'),
             ),
             tab(
               index: 2,
@@ -1170,7 +1173,7 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       ],
                     ),
-              label: '你',
+              label: tr('你'),
               onLongPress: () => showSwitchAccountsSheet(context, ctrl),
             ),
           ],
@@ -1256,7 +1259,7 @@ class _HomeScreenState extends State<HomeScreen>
                     onChanged: (v) => setM(() => q = v),
                     style: TextStyle(color: p.textPrimary),
                     decoration: InputDecoration(
-                      hintText: '搜尋頻道...',
+                      hintText: tr('搜尋頻道...'),
                       prefixIcon:
                           Icon(Icons.search_rounded, color: p.textMuted),
                       filled: true,
@@ -1347,7 +1350,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ListTile(
                         leading: Icon(Icons.add_circle_outline,
                             color: p.textPrimary),
-                        title: Text('建立頻道',
+                        title: Text(tr('建立頻道'),
                             style: TextStyle(color: p.textPrimary)),
                         onTap: () {
                           Navigator.of(ctx).pop();
@@ -1360,7 +1363,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ListTile(
                         leading: Icon(Icons.receipt_long_outlined,
                             color: p.textPrimary),
-                        title: Text('檢視審計日誌',
+                        title: Text(tr('檢視審計日誌'),
                             style: TextStyle(color: p.textPrimary)),
                         onTap: () {
                           Navigator.of(ctx).pop();
@@ -1375,7 +1378,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ListTile(
                         leading: Icon(Icons.image_outlined,
                             color: p.textPrimary),
-                        title: Text('檢視伺服器圖示 (ViewIcons)',
+                        title: Text(tr('檢視伺服器圖示 (ViewIcons)'),
                             style: TextStyle(color: p.textPrimary)),
                         onTap: () {
                           Navigator.of(ctx).pop();
@@ -1394,7 +1397,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ListTile(
                         leading: Icon(Icons.admin_panel_settings_outlined,
                             color: p.textPrimary),
-                        title: Text('檢視機器人伺服器權限',
+                        title: Text(tr('檢視機器人伺服器權限'),
                             style: TextStyle(color: p.textPrimary)),
                         onTap: () {
                           Navigator.of(ctx).pop();
@@ -1412,7 +1415,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ListTile(
                         leading: Icon(Icons.code_rounded,
                             color: p.textPrimary),
-                        title: Text('檢視伺服器原始資料 (View Raw)',
+                        title: Text(tr('檢視伺服器原始資料 (View Raw)'),
                             style: TextStyle(color: p.textPrimary)),
                         onTap: () {
                           Navigator.of(ctx).pop();
@@ -1441,7 +1444,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ListTile(
                       leading: Icon(Icons.copy_rounded,
                           color: p.textSecondary),
-                      title: Text('複製伺服器 ID',
+                      title: Text(tr('複製伺服器 ID'),
                           style: TextStyle(color: p.textPrimary)),
                       onTap: () {
                         Clipboard.setData(ClipboardData(text: guild.id));
@@ -1472,7 +1475,7 @@ class _HomeScreenState extends State<HomeScreen>
             Padding(
               padding: const EdgeInsets.all(14),
               child: Text(
-                '審計日誌',
+                tr('審計日誌'),
                 style: TextStyle(
                   color: p.textPrimary,
                   fontSize: 17,
@@ -1491,7 +1494,7 @@ class _HomeScreenState extends State<HomeScreen>
                   final entries = snap.data ?? const [];
                   if (entries.isEmpty) {
                     return Center(
-                      child: Text('無審計紀錄或無檢視權限',
+                      child: Text(tr('無審計紀錄或無檢視權限'),
                           style: TextStyle(color: p.textMuted)),
                     );
                   }
@@ -1503,12 +1506,54 @@ class _HomeScreenState extends State<HomeScreen>
                         Divider(height: 1, color: p.border),
                     itemBuilder: (_, i) {
                       final e = entries[i];
+                      // Names instead of raw snowflakes: users from the log
+                      // payload, channels / roles from the cached guild.
+                      String? targetName = e.targetUser?.displayName;
+                      if (targetName == null && e.targetId != null) {
+                        for (final c in guild.channels) {
+                          if (c.id == e.targetId) targetName = '#${c.name}';
+                        }
+                        final role = guild.roles[e.targetId];
+                        if (role != null) targetName = '@${role.name}';
+                      }
+                      final actor = e.user?.displayName ?? tr('未知使用者');
+                      final when = snowflakeCreatedAt(e.id);
+                      final reasonText = (e.reason != null &&
+                              e.reason!.isNotEmpty)
+                          ? trf('\n原因：{0}', [e.reason])
+                          : '';
                       return ListTile(
                         dense: true,
-                        title: Text(e.actionLabel,
-                            style: TextStyle(color: p.textPrimary)),
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          radius: 18,
+                          backgroundImage: e.user != null
+                              ? NetworkImage(e.user!.avatarUrl(size: 64))
+                              : null,
+                          child: e.user == null
+                              ? const Icon(Icons.history_rounded, size: 18)
+                              : null,
+                        ),
+                        title: Text.rich(
+                          TextSpan(children: [
+                            TextSpan(
+                              text: actor,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            TextSpan(text: '  ${e.actionLabel}'),
+                            if (targetName != null)
+                              TextSpan(
+                                text: '  $targetName',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700),
+                              ),
+                          ]),
+                          style:
+                              TextStyle(color: p.textPrimary, fontSize: 14),
+                        ),
                         subtitle: Text(
-                          '執行者: ${e.userId ?? '-'} • 目標: ${e.targetId ?? '-'}${e.reason != null ? '\n原因: ${e.reason}' : ''}',
+                          '${when.year}/${when.month}/${when.day} ${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}$reasonText',
                           style: TextStyle(color: p.textMuted, fontSize: 12),
                         ),
                       );
@@ -1534,16 +1579,16 @@ class _HomeScreenState extends State<HomeScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
           backgroundColor: p.cardBg,
-          title: const Text('建立頻道'),
+          title: Text(tr('建立頻道')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<int>(
                 value: type,
                 dropdownColor: p.cardBg,
-                items: const [
-                  DropdownMenuItem(value: 0, child: Text('文字頻道')),
-                  DropdownMenuItem(value: 2, child: Text('語音頻道')),
+                items: [
+                  DropdownMenuItem(value: 0, child: Text(tr('文字頻道'))),
+                  DropdownMenuItem(value: 2, child: Text(tr('語音頻道'))),
                 ],
                 onChanged: (v) {
                   if (v != null) setDlg(() => type = v);
@@ -1552,14 +1597,14 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 10),
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(hintText: '新頻道名稱'),
+                decoration: InputDecoration(hintText: tr('新頻道名稱')),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('取消'),
+              child: Text(tr('取消')),
             ),
             FilledButton(
               onPressed: () async {
@@ -1576,7 +1621,7 @@ class _HomeScreenState extends State<HomeScreen>
                   }
                 } catch (_) {}
               },
-              child: const Text('建立'),
+              child: Text(tr('建立')),
             ),
           ],
         ),
@@ -1591,7 +1636,7 @@ class _HomeScreenState extends State<HomeScreen>
   ) {
     if (guild == null) {
       return Center(
-        child: Text('尚未加入任何伺服器', style: TextStyle(color: p.textMuted)),
+        child: Text(tr('尚未加入任何伺服器'), style: TextStyle(color: p.textMuted)),
       );
     }
 
@@ -1726,8 +1771,8 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 3),
                 Text(
                   guild.isCommunity
-                      ? '${_formatMemberCount(guild.memberCount!)} 位成員 • 社群'
-                      : '${_formatMemberCount(guild.memberCount!)} 位成員',
+                      ? trf('{0} 位成員 • 社群', [_formatMemberCount(guild.memberCount!)])
+                      : trf('{0} 位成員', [_formatMemberCount(guild.memberCount!)]),
                   style: TextStyle(
                     color: p.textMuted,
                     fontSize: 12.5,
@@ -1755,7 +1800,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 size: 18, color: p.textSecondary),
                             const SizedBox(width: 6),
                             Text(
-                              '搜尋',
+                              tr('搜尋'),
                               style: TextStyle(
                                 color: p.textSecondary,
                                 fontSize: 14,
@@ -1781,7 +1826,7 @@ class _HomeScreenState extends State<HomeScreen>
                         await Clipboard.setData(ClipboardData(text: url));
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('已複製邀請連結：$url')),
+                            SnackBar(content: Text(trf('已複製邀請連結：{0}', [url]))),
                           );
                         }
                       } catch (_) {}
@@ -1822,7 +1867,7 @@ class _HomeScreenState extends State<HomeScreen>
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '頻道與身分組',
+                      tr('頻道與身分組'),
                       style: TextStyle(
                         color: p.textSecondary,
                         fontSize: 14.5,
@@ -2114,8 +2159,8 @@ class _HomeScreenState extends State<HomeScreen>
                   color: DiscordPalette.danger,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text(
-                  '直播',
+                child: Text(
+                  tr('直播'),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 9,
@@ -2155,7 +2200,7 @@ class _HomeScreenState extends State<HomeScreen>
           child: Row(
             children: [
               Text(
-                '訊息',
+                tr('訊息'),
                 style: TextStyle(
                   color: p.textPrimary,
                   fontSize: 20,
@@ -2179,7 +2224,7 @@ class _HomeScreenState extends State<HomeScreen>
                           size: 16, color: p.textPrimary),
                       const SizedBox(width: 6),
                       Text(
-                        '新訊息',
+                        tr('新訊息'),
                         style: TextStyle(
                           color: p.textPrimary,
                           fontSize: 13,
@@ -2200,7 +2245,7 @@ class _HomeScreenState extends State<HomeScreen>
             onChanged: (v) => setState(() => _dmFilter = v),
             style: TextStyle(color: p.textPrimary, fontSize: 14),
             decoration: InputDecoration(
-              hintText: '搜尋',
+              hintText: tr('搜尋'),
               hintStyle: TextStyle(color: p.textMuted, fontSize: 14),
               prefixIcon:
                   Icon(Icons.search_rounded, color: p.textMuted, size: 19),
@@ -2220,7 +2265,7 @@ class _HomeScreenState extends State<HomeScreen>
           child: dms.isEmpty
               ? Center(
                   child: Text(
-                    '尚無私人訊息',
+                    tr('尚無私人訊息'),
                     style: TextStyle(color: p.textMuted, fontSize: 14),
                   ),
                 )
@@ -2277,7 +2322,7 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                           ),
                           subtitle: Text(
-                            user != null ? user.username : '私人訊息',
+                            user != null ? user.username : tr('私人訊息'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style:
@@ -2573,6 +2618,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
       builder: (_) => EmbedComposerSheet(
         palette: p,
         advancedDefault: isAdvancedEditor,
+        authorName: ctrl.activeAccount?.displayName,
+        authorAvatarUrl: ctrl.activeAccount?.avatarUrl(size: 64),
         onSend: (emb, extra) => _send(
           embeds: [emb],
           overrideContent: extra,
@@ -2649,14 +2696,14 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    item(Icons.photo_library_outlined, '相片', () {
+                    item(Icons.photo_library_outlined, tr('相片'), () {
                       Navigator.of(ctx).pop();
                       _pickAttachment();
                     }),
                     if (showEmbed)
                       item(
                         Icons.code_rounded,
-                        isAdvancedEditor ? '進階訊息編輯器' : '建立 Embed',
+                        isAdvancedEditor ? tr('進階訊息編輯器') : tr('建立 Embed'),
                         () {
                           Navigator.of(ctx).pop();
                           _openEmbedComposer(p, isAdvancedEditor);
@@ -2664,7 +2711,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                         leading: DbcEmbedIcon(size: 22, color: p.textPrimary),
                       ),
                     if (vc.isPluginEnabled('SendTimestamps'))
-                      item(Icons.schedule_rounded, '插入時間戳記', () {
+                      item(Icons.schedule_rounded, tr('插入時間戳記'), () {
                         Navigator.of(ctx).pop();
                         showTimestampPickerSheet(
                           context,
@@ -2677,7 +2724,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                         _silentMessage
                             ? Icons.notifications_off_rounded
                             : Icons.notifications_none_rounded,
-                        _silentMessage ? '關閉無聲訊息' : '傳送無聲訊息 (@silent)',
+                        _silentMessage ? tr('關閉無聲訊息') : tr('傳送無聲訊息 (@silent)'),
                         () {
                           Navigator.of(ctx).pop();
                           HapticFeedback.selectionClick();
@@ -2698,11 +2745,11 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     if (_slashPrefix.isEmpty) return const SizedBox.shrink();
 
     final commands = <(String, String)>[
-      ('/ping', '傳送 Pong! 測試機器人回應'),
-      ('/purge ', '批次刪除頻道內近期訊息 (2–100 則)'),
-      ('/switch shard ', '切換連線的 Gateway Shard ID'),
-      ('/switch guild ', '根據伺服器 ID 自動計算並切換分片'),
-      ('/override bitrate ', '覆寫語音頻道位元率 (6–5000 Kbps)'),
+      ('/ping', tr('傳送 Pong! 測試機器人回應')),
+      ('/purge ', tr('批次刪除頻道內近期訊息 (2–100 則)')),
+      ('/switch shard ', tr('切換連線的 Gateway Shard ID')),
+      ('/switch guild ', tr('根據伺服器 ID 自動計算並切換分片')),
+      ('/override bitrate ', tr('覆寫語音頻道位元率 (6–5000 Kbps)')),
       ...widget.controller.vencord.enabledCustomCommands.map(
         (c) => ('/${c.name} ', c.description),
       ),
@@ -2839,7 +2886,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     if (channel == null) {
       return Center(
         child: Text(
-          '選擇一個頻道開始對話',
+          tr('選擇一個頻道開始對話'),
           style: TextStyle(color: p.textMuted, fontSize: 15),
         ),
       );
@@ -2945,8 +2992,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               if (channel.isVoice && guild != null && !isHiddenChannel)
                 IconButton(
                   tooltip: ctrl.activeVoiceChannelId == channel.id
-                      ? '開啟語音房間'
-                      : '加入語音',
+                      ? tr('開啟語音房間')
+                      : tr('加入語音'),
                   icon: Icon(
                     Icons.volume_up_rounded,
                     color: ctrl.activeVoiceChannelId == channel.id
@@ -2988,7 +3035,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                     final posts = snap.data ?? const [];
                     if (posts.isEmpty) {
                       return Center(
-                        child: Text('此論壇頻道目前尚無貼文',
+                        child: Text(tr('此論壇頻道目前尚無貼文'),
                             style: TextStyle(color: p.textMuted)),
                       );
                     }
@@ -3095,7 +3142,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                           Text(
                                             channel.isDm
                                                 ? channel.displayTitle
-                                                : '歡迎來到 #${channel.name}！',
+                                                : trf('歡迎來到 #{0}！', [channel.name]),
                                             style: TextStyle(
                                               color: p.textPrimary,
                                               fontSize: 22,
@@ -3105,8 +3152,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                           const SizedBox(height: 4),
                                           Text(
                                             channel.isDm
-                                                ? '這是您與 ${channel.displayTitle} 私人訊息紀錄的開頭。'
-                                                : '這是 #${channel.name} 頻道的起點。',
+                                                ? trf('這是您與 {0} 私人訊息紀錄的開頭。', [channel.displayTitle])
+                                                : trf('這是 #{0} 頻道的起點。', [channel.name]),
                                             style: TextStyle(
                                               color: p.textSecondary,
                                               fontSize: 14,
@@ -3127,7 +3174,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                               icon: const Icon(
                                                   Icons.person_outline_rounded,
                                                   size: 17),
-                                              label: const Text('檢視個人資料'),
+                                              label: Text(tr('檢視個人資料')),
                                             ),
                                           ],
                                         ],
@@ -3202,6 +3249,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                       isScrollControlled: true,
                                       builder: (_) => EmbedComposerSheet(
                                         palette: p,
+                                        authorName:
+                                            ctrl.activeAccount?.displayName,
+                                        authorAvatarUrl: ctrl.activeAccount
+                                            ?.avatarUrl(size: 64),
                                         initialEmbed: m.embeds.isNotEmpty
                                             ? m.embeds.first
                                             : null,
@@ -3251,14 +3302,14 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                       context: context,
                                       builder: (ctx) => AlertDialog(
                                         backgroundColor: p.cardBg,
-                                        title: const Text('刪除訊息'),
+                                        title: Text(tr('刪除訊息')),
                                         content:
-                                            const Text('確定要刪除此則訊息嗎？'),
+                                            Text(tr('確定要刪除此則訊息嗎？')),
                                         actions: [
                                           TextButton(
                                             onPressed: () =>
                                                 Navigator.of(ctx).pop(false),
-                                            child: const Text('取消'),
+                                            child: Text(tr('取消')),
                                           ),
                                           FilledButton(
                                             style: FilledButton.styleFrom(
@@ -3267,7 +3318,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                             ),
                                             onPressed: () =>
                                                 Navigator.of(ctx).pop(true),
-                                            child: const Text('刪除'),
+                                            child: Text(tr('刪除')),
                                           ),
                                         ],
                                       ),
@@ -3298,7 +3349,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           SnackBar(
-                                            content: Text('無法切換表情反應：$e'),
+                                            content: Text(trf('無法切換表情反應：{0}', [e])),
                                             duration:
                                                 const Duration(seconds: 2),
                                           ),
@@ -3410,10 +3461,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                 Expanded(
                   child: Text(
                     _editingTarget != null
-                        ? '正在編輯訊息'
+                        ? tr('正在編輯訊息')
                         : (_pendingAttachmentName != null
-                            ? '已附加檔案：$_pendingAttachmentName'
-                            : '回覆 ${_replyTarget!.authorDisplayName(guild)}'),
+                            ? trf('已附加檔案：{0}', [_pendingAttachmentName])
+                            : trf('回覆 {0}', [_replyTarget!.authorDisplayName(guild)])),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -3440,7 +3491,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        _replyMention ? '@ 提及：開' : '@ 提及：關',
+                        _replyMention ? tr('@ 提及：開') : tr('@ 提及：關'),
                         style: TextStyle(
                           color: _replyMention ? Colors.white : p.textMuted,
                           fontSize: 11.5,
@@ -3517,9 +3568,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             decoration: InputDecoration(
                               hintText: canSend
                                   ? (channel.isDm
-                                      ? '傳送訊息給 @${channel.displayTitle}'
-                                      : '傳送訊息至 #${channel.name}')
-                                  : '您沒有在此頻道發送訊息的權限',
+                                      ? trf('傳送訊息給 @{0}', [channel.displayTitle])
+                                      : trf('傳送訊息至 #{0}', [channel.name]))
+                                  : tr('您沒有在此頻道發送訊息的權限'),
                               hintStyle: TextStyle(
                                   color: p.textMuted, fontSize: 14.5),
                               border: InputBorder.none,
@@ -3534,7 +3585,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.all(4),
                             constraints: const BoxConstraints(),
-                            tooltip: '無聲訊息 (@silent)',
+                            tooltip: tr('無聲訊息 (@silent)'),
                             onPressed: () {
                               HapticFeedback.selectionClick();
                               setState(() => _silentMessage = false);
@@ -3550,7 +3601,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.all(4),
                             constraints: const BoxConstraints(),
-                            tooltip: 'Application / 伺服器表情符號',
+                            tooltip: tr('Application / 伺服器表情符號'),
                             onPressed: () => showDiscordEmojiPickerSheet(
                               context,
                               controller: ctrl,

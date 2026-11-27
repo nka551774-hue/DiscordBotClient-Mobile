@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/strings.dart';
 
 class EcoSettings {
   final bool oledBlackMode;
@@ -632,31 +633,32 @@ class DiscordPermissions {
   static final BigInt moderateMembers = BigInt.one << 40;
   static final BigInt all = (BigInt.one << 53) - BigInt.one;
 
-  static final List<(String name, BigInt bit)> namedFlags = [
-    ('Administrator (管理員)', BigInt.one << 3),
-    ('Manage Guild (管理伺服器)', BigInt.one << 5),
-    ('Manage Roles (管理身分組)', BigInt.one << 28),
-    ('Manage Channels (管理頻道)', BigInt.one << 4),
-    ('Kick Members (踢出成員)', BigInt.one << 1),
-    ('Ban Members (封鎖成員)', BigInt.one << 2),
-    ('Moderate Members (禁言成員)', BigInt.one << 40),
-    ('View Audit Log (檢視審計日誌)', BigInt.one << 7),
-    ('View Channel (檢視頻道)', BigInt.one << 10),
-    ('Send Messages (傳送訊息)', BigInt.one << 11),
-    ('Send Messages in Threads (於討論串傳訊)', BigInt.one << 38),
-    ('Manage Messages (管理訊息)', BigInt.one << 13),
-    ('Embed Links (嵌入連結)', BigInt.one << 14),
-    ('Attach Files (附加檔案)', BigInt.one << 15),
-    ('Read Message History (讀取歷史訊息)', BigInt.one << 16),
-    ('Mention Everyone (提及所有人)', BigInt.one << 17),
-    ('Use External Emojis (使用外部表情)', BigInt.one << 18),
-    ('Add Reactions (新增反應)', BigInt.one << 6),
-    ('Connect Voice (連線語音)', BigInt.one << 20),
-    ('Speak (語音發話)', BigInt.one << 21),
-    ('Use Soundboard (使用音效板)', BigInt.one << 42),
-    ('Use External Sounds (跨服音效板)', BigInt.one << 45),
-    ('Manage Webhooks (管理 Webhook)', BigInt.one << 29),
-    ('Manage Expressions (管理表情與音效)', BigInt.one << 30),
+  // getter so the labels follow the current UI language
+  static List<(String name, BigInt bit)> get namedFlags => [
+    (tr('Administrator (管理員)'), BigInt.one << 3),
+    (tr('Manage Guild (管理伺服器)'), BigInt.one << 5),
+    (tr('Manage Roles (管理身分組)'), BigInt.one << 28),
+    (tr('Manage Channels (管理頻道)'), BigInt.one << 4),
+    (tr('Kick Members (踢出成員)'), BigInt.one << 1),
+    (tr('Ban Members (封鎖成員)'), BigInt.one << 2),
+    (tr('Moderate Members (禁言成員)'), BigInt.one << 40),
+    (tr('View Audit Log (檢視審計日誌)'), BigInt.one << 7),
+    (tr('View Channel (檢視頻道)'), BigInt.one << 10),
+    (tr('Send Messages (傳送訊息)'), BigInt.one << 11),
+    (tr('Send Messages in Threads (於討論串傳訊)'), BigInt.one << 38),
+    (tr('Manage Messages (管理訊息)'), BigInt.one << 13),
+    (tr('Embed Links (嵌入連結)'), BigInt.one << 14),
+    (tr('Attach Files (附加檔案)'), BigInt.one << 15),
+    (tr('Read Message History (讀取歷史訊息)'), BigInt.one << 16),
+    (tr('Mention Everyone (提及所有人)'), BigInt.one << 17),
+    (tr('Use External Emojis (使用外部表情)'), BigInt.one << 18),
+    (tr('Add Reactions (新增反應)'), BigInt.one << 6),
+    (tr('Connect Voice (連線語音)'), BigInt.one << 20),
+    (tr('Speak (語音發話)'), BigInt.one << 21),
+    (tr('Use Soundboard (使用音效板)'), BigInt.one << 42),
+    (tr('Use External Sounds (跨服音效板)'), BigInt.one << 45),
+    (tr('Manage Webhooks (管理 Webhook)'), BigInt.one << 29),
+    (tr('Manage Expressions (管理表情與音效)'), BigInt.one << 30),
   ];
 
   static BigInt computeChannelPermissions({
@@ -1731,6 +1733,9 @@ class AuditLogEntry {
   final String? userId;
   final String? targetId;
   final String? reason;
+  /// Resolved from the audit log's `users` list (names instead of raw IDs).
+  final DiscordUser? user;
+  final DiscordUser? targetUser;
 
   const AuditLogEntry({
     required this.id,
@@ -1738,46 +1743,86 @@ class AuditLogEntry {
     this.userId,
     this.targetId,
     this.reason,
+    this.user,
+    this.targetUser,
   });
+
+  AuditLogEntry withUsers(Map<String, DiscordUser> users) => AuditLogEntry(
+        id: id,
+        actionType: actionType,
+        userId: userId,
+        targetId: targetId,
+        reason: reason,
+        user: userId != null ? users[userId] : null,
+        targetUser: targetId != null ? users[targetId] : null,
+      );
 
   String get actionLabel {
     switch (actionType) {
       case 1:
-        return '更新伺服器設定';
+        return tr('更新伺服器設定');
       case 10:
-        return '建立頻道';
+        return tr('建立頻道');
       case 11:
-        return '更新頻道';
+        return tr('更新頻道');
       case 12:
-        return '刪除頻道';
+        return tr('刪除頻道');
       case 20:
-        return '踢出成員';
+        return tr('踢出成員');
       case 22:
-        return '封鎖成員';
+        return tr('封鎖成員');
       case 23:
-        return '解除封鎖';
+        return tr('解除封鎖');
+      case 21:
+        return tr('清除不活躍成員');
       case 24:
-        return '更新成員';
+        return tr('更新成員');
       case 25:
-        return '更新成員身分組';
+        return tr('更新成員身分組');
       case 30:
-        return '建立身分組';
+        return tr('建立身分組');
       case 31:
-        return '更新身分組';
+        return tr('更新身分組');
       case 32:
-        return '刪除身分組';
+        return tr('刪除身分組');
       case 40:
-        return '建立邀請連結';
+        return tr('建立邀請連結');
       case 50:
-        return '建立 Webhook';
+        return tr('建立 Webhook');
       case 72:
-        return '刪除訊息';
+        return tr('刪除訊息');
       case 74:
-        return '釘選訊息';
+        return tr('釘選訊息');
       case 75:
-        return '取消釘選訊息';
+        return tr('取消釘選訊息');
+      case 26:
+        return tr('移動語音成員');
+      case 27:
+        return tr('中斷語音成員');
+      case 28:
+        return tr('新增機器人');
+      case 41:
+        return tr('更新邀請連結');
+      case 42:
+        return tr('刪除邀請連結');
+      case 60:
+        return tr('建立表情符號');
+      case 62:
+        return tr('刪除表情符號');
+      case 73:
+        return tr('大量刪除訊息');
+      case 110:
+        return tr('建立討論串');
+      case 111:
+        return tr('更新討論串');
+      case 112:
+        return tr('刪除討論串');
+      case 140:
+        return tr('建立自動管理規則');
+      case 143:
+        return tr('自動管理封鎖訊息');
       default:
-        return '操作 #$actionType';
+        return trf('操作 #{0}', [actionType]);
     }
   }
 

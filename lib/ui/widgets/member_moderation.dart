@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
+import '../../l10n/strings.dart';
 
 int _topRolePosition(DiscordGuild guild, List<String> roleIds) {
   var top = 0;
@@ -56,8 +57,8 @@ Future<String?> _confirmWithReason(
           const SizedBox(height: 12),
           TextField(
             controller: reasonCtrl,
-            decoration: const InputDecoration(
-              labelText: '原因（選填，會記錄於審核日誌）',
+            decoration: InputDecoration(
+              labelText: tr('原因（選填，會記錄於審核日誌）'),
             ),
           ),
         ],
@@ -65,7 +66,7 @@ Future<String?> _confirmWithReason(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('取消'),
+          child: Text(tr('取消')),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: DiscordPalette.danger),
@@ -80,13 +81,13 @@ Future<String?> _confirmWithReason(
 
 /// Timeout picker; Duration.zero means "remove timeout".
 Future<Duration?> _pickTimeout(BuildContext context, DiscordPalette p) {
-  const options = <(String, Duration)>[
-    ('60 秒', Duration(seconds: 60)),
-    ('5 分鐘', Duration(minutes: 5)),
-    ('10 分鐘', Duration(minutes: 10)),
-    ('1 小時', Duration(hours: 1)),
-    ('1 天', Duration(days: 1)),
-    ('1 週', Duration(days: 7)),
+  final options = <(String, Duration)>[
+    (tr('60 秒'), Duration(seconds: 60)),
+    (tr('5 分鐘'), Duration(minutes: 5)),
+    (tr('10 分鐘'), Duration(minutes: 10)),
+    (tr('1 小時'), Duration(hours: 1)),
+    (tr('1 天'), Duration(days: 1)),
+    (tr('1 週'), Duration(days: 7)),
   ];
   return showModalBottomSheet<Duration>(
     context: context,
@@ -99,7 +100,7 @@ Future<Duration?> _pickTimeout(BuildContext context, DiscordPalette p) {
             Padding(
               padding: const EdgeInsets.all(8),
               child: Text(
-                '禁言時長',
+                tr('禁言時長'),
                 style: TextStyle(
                   color: p.textPrimary,
                   fontSize: 17,
@@ -124,7 +125,7 @@ Future<Duration?> _pickTimeout(BuildContext context, DiscordPalette p) {
                   ListTile(
                     leading: Icon(Icons.timer_off_outlined,
                         color: p.textPrimary),
-                    title: Text('解除禁言',
+                    title: Text(tr('解除禁言'),
                         style: TextStyle(color: p.textPrimary)),
                     onTap: () => Navigator.of(ctx).pop(Duration.zero),
                   ),
@@ -186,7 +187,7 @@ List<Widget> memberModerationTiles({
       subtitle: outranks
           ? null
           : Text(
-              '機器人的最高身分組必須高於對方',
+              tr('機器人的最高身分組必須高於對方'),
               style: TextStyle(color: p.textMuted, fontSize: 12),
             ),
       onTap: () async {
@@ -196,7 +197,7 @@ List<Widget> memberModerationTiles({
     ));
   }
 
-  add(Icons.timer_outlined, '禁言 $name', DiscordPermissions.moderateMembers,
+  add(Icons.timer_outlined, trf('禁言 {0}', [name]), DiscordPermissions.moderateMembers,
       () async {
     final d = await _pickTimeout(context, p);
     if (d == null || !context.mounted) return;
@@ -208,44 +209,44 @@ List<Widget> memberModerationTiles({
         user.id,
         until: clear ? null : DateTime.now().add(d),
       ),
-      clear ? '已解除 $name 的禁言' : '已禁言 $name',
+      clear ? trf('已解除 {0} 的禁言', [name]) : trf('已禁言 {0}', [name]),
     );
   });
 
-  add(Icons.person_remove_outlined, '踢出 $name', DiscordPermissions.kickMembers,
+  add(Icons.person_remove_outlined, trf('踢出 {0}', [name]), DiscordPermissions.kickMembers,
       () async {
     final reason = await _confirmWithReason(
       context,
       p,
-      title: '踢出 $name',
-      body: '確定要將 $name 踢出「${guild.name}」嗎？對方可以透過邀請重新加入。',
-      confirmLabel: '踢出',
+      title: trf('踢出 {0}', [name]),
+      body: trf('確定要將 {0} 踢出「{1}」嗎？對方可以透過邀請重新加入。', [name, guild.name]),
+      confirmLabel: tr('踢出'),
     );
     if (reason == null || !context.mounted) return;
     await _run(
       context,
       () => rest.kickMember(guild.id, user.id,
           reason: reason.isEmpty ? null : reason),
-      '已將 $name 踢出伺服器',
+      trf('已將 {0} 踢出伺服器', [name]),
       onSuccess: onRemoved,
     );
   });
 
-  add(Icons.gavel_rounded, '停權 $name', DiscordPermissions.banMembers,
+  add(Icons.gavel_rounded, trf('停權 {0}', [name]), DiscordPermissions.banMembers,
       () async {
     final reason = await _confirmWithReason(
       context,
       p,
-      title: '停權 $name',
-      body: '確定要將 $name 從「${guild.name}」停權嗎？對方將無法再加入，直到解除停權。',
-      confirmLabel: '停權',
+      title: trf('停權 {0}', [name]),
+      body: trf('確定要將 {0} 從「{1}」停權嗎？對方將無法再加入，直到解除停權。', [name, guild.name]),
+      confirmLabel: tr('停權'),
     );
     if (reason == null || !context.mounted) return;
     await _run(
       context,
       () => rest.banMember(guild.id, user.id,
           reason: reason.isEmpty ? null : reason),
-      '已將 $name 停權',
+      trf('已將 {0} 停權', [name]),
       onSuccess: onRemoved,
     );
   });
@@ -304,7 +305,7 @@ void showMemberActionsSheet(
                   ListTile(
                     leading: Icon(Icons.person_outline_rounded,
                         color: p.textPrimary),
-                    title: Text('檢視個人資料',
+                    title: Text(tr('檢視個人資料'),
                         style: TextStyle(color: p.textPrimary)),
                     onTap: () {
                       Navigator.of(menuCtx).pop();
@@ -314,7 +315,7 @@ void showMemberActionsSheet(
                   Divider(height: 1, color: p.border),
                   ListTile(
                     leading: Icon(Icons.copy_rounded, color: p.textPrimary),
-                    title: Text('複製使用者 ID',
+                    title: Text(tr('複製使用者 ID'),
                         style: TextStyle(color: p.textPrimary)),
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: user.id));

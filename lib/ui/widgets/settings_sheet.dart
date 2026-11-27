@@ -6,6 +6,7 @@ import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
 import 'vencord_sheets.dart';
+import '../../l10n/strings.dart';
 
 /// Clean, authentic Discord Mobile "You" Profile Modal Sheet —
 /// renders ONLY real account data (real banner/accentColor, real Discord badges
@@ -71,7 +72,7 @@ class _YouProfileModalSheet extends StatelessWidget {
 
         final created = snowflakeCreatedAt(acc.id);
         final createdStr =
-            '${created.year}年${created.month}月${created.day}日';
+            trf('{0}年{1}月{2}日', [created.year, created.month, created.day]);
 
         final height =
             embedded ? null : MediaQuery.of(context).size.height * 0.90;
@@ -100,7 +101,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                           ? () => showVencordImageViewerModal(
                                 context,
                                 palette: p,
-                                title: '${acc.displayName} 橫幅',
+                                title: trf('{0} 橫幅', [acc.displayName]),
                                 imageUrl: bannerUrl,
                               )
                           : null,
@@ -167,7 +168,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                             ? () => showVencordImageViewerModal(
                                   context,
                                   palette: p,
-                                  title: '${acc.displayName} 頭像',
+                                  title: trf('{0} 頭像', [acc.displayName]),
                                   imageUrl: acc.avatarUrl(size: 1024),
                                 )
                             : null,
@@ -257,7 +258,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                                 Flexible(
                                   child: Text(
                                     controller.botActivityName.isEmpty
-                                        ? '新增狀態'
+                                        ? tr('新增狀態')
                                         : controller.botActivityName,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -393,8 +394,8 @@ class _YouProfileModalSheet extends StatelessWidget {
                             showDiscordStatusSheet(context, controller),
                         icon: const Icon(Icons.edit_rounded,
                             size: 17, color: Colors.white),
-                        label: const Text(
-                          '變更狀態與活動',
+                        label: Text(
+                          tr('變更狀態與活動'),
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 14.5,
@@ -419,7 +420,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                         children: [
                           if (acc.bio != null && acc.bio!.isNotEmpty) ...[
                             Text(
-                              '簡介',
+                              tr('簡介'),
                               style: TextStyle(
                                 color: p.textSecondary,
                                 fontSize: 12.5,
@@ -441,7 +442,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                             ),
                           ],
                           Text(
-                            'Discord 加入時間',
+                            tr('Discord 加入時間'),
                             style: TextStyle(
                               color: p.textSecondary,
                               fontSize: 12.5,
@@ -462,7 +463,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                               child: Divider(height: 1, color: p.border),
                             ),
                             Text(
-                              '分片連線 (Shard)',
+                              tr('分片連線 (Shard)'),
                               style: TextStyle(
                                 color: p.textSecondary,
                                 fontSize: 12.5,
@@ -493,7 +494,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                       child: ListTile(
                         leading: Icon(Icons.badge_outlined,
                             color: p.textSecondary, size: 20),
-                        title: Text('複製應用程式 / 機器人 ID',
+                        title: Text(tr('複製應用程式 / 機器人 ID'),
                             style:
                                 TextStyle(color: p.textPrimary, fontSize: 14.5)),
                         subtitle: Text(acc.id,
@@ -502,8 +503,8 @@ class _YouProfileModalSheet extends StatelessWidget {
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: acc.id));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('已複製 ID'),
+                            SnackBar(
+                              content: Text(tr('已複製 ID')),
                               duration: Duration(seconds: 1),
                             ),
                           );
@@ -558,17 +559,17 @@ class DiscordSettingsScreen extends StatelessWidget {
           backgroundColor: p.profileBg,
           appBar: AppBar(
             backgroundColor: p.profileBg,
-            title: const Text('設定'),
+            title: Text(tr('設定')),
           ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _groupLabel(p, '帳號設定'),
+              _groupLabel(p, tr('帳號設定')),
               _settingsGroup(p, [
                 ListTile(
                   leading:
                       Icon(Icons.swap_horiz_rounded, color: p.textSecondary),
-                  title: Text('切換帳號',
+                  title: Text(tr('切換帳號'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   trailing:
                       Icon(Icons.chevron_right, color: p.textMuted, size: 20),
@@ -576,15 +577,50 @@ class DiscordSettingsScreen extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 20),
-              _groupLabel(p, '應用程式設定'),
+              _groupLabel(p, tr('應用程式設定')),
               _settingsGroup(p, [
                 ListTile(
                   leading:
-                      Icon(Icons.dark_mode_outlined, color: p.textSecondary),
-                  title: Text('外觀主題',
+                      Icon(Icons.language_rounded, color: p.textSecondary),
+                  title: Text('Language / 語言 / 言語',
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    eco.oledBlackMode ? 'Onyx (純黑)' : 'Ash (深灰)',
+                    AppLanguage.options[AppLanguage.current.value] ?? '',
+                    style: TextStyle(color: p.textMuted, fontSize: 12.5),
+                  ),
+                  trailing: Icon(Icons.chevron_right_rounded,
+                      color: p.textMuted),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    builder: (ctx) => SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final e in AppLanguage.options.entries)
+                            ListTile(
+                              title: Text(e.value),
+                              trailing: AppLanguage.current.value == e.key
+                                  ? const Icon(Icons.check_rounded,
+                                      color: DiscordPalette.blurple)
+                                  : null,
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                AppLanguage.set(e.key);
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Divider(height: 1, color: p.border),
+                ListTile(
+                  leading:
+                      Icon(Icons.dark_mode_outlined, color: p.textSecondary),
+                  title: Text(tr('外觀主題'),
+                      style: TextStyle(color: p.textPrimary, fontSize: 15)),
+                  subtitle: Text(
+                    eco.oledBlackMode ? tr('Onyx (純黑)') : tr('Ash (深灰)'),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   trailing: Switch(
@@ -597,10 +633,10 @@ class DiscordSettingsScreen extends StatelessWidget {
                 Divider(height: 1, color: p.border),
                 SwitchListTile(
                   secondary: Icon(Icons.bolt_outlined, color: p.textSecondary),
-                  title: Text('省電模式',
+                  title: Text(tr('省電模式'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    '背景閒置時自動休眠連線並降低記憶體快取',
+                    tr('背景閒置時自動休眠連線並降低記憶體快取'),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   value: eco.ecoPowerSaving,
@@ -616,10 +652,10 @@ class DiscordSettingsScreen extends StatelessWidget {
                 ListTile(
                   leading:
                       Icon(Icons.extension_rounded, color: p.brandColor),
-                  title: Text('Vencord 插件 (Plugins)',
+                  title: Text(tr('Vencord 插件 (Plugins)'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    '已啟用 ${controller.vencord.allPlugins.where((pl) => controller.vencord.isPluginEnabled(pl.name)).length} / ${controller.vencord.allPlugins.length} 個內建與自訂外掛',
+                    trf('已啟用 {0} / {1} 個內建與自訂外掛', [controller.vencord.allPlugins.where((pl) => controller.vencord.isPluginEnabled(pl.name)).length, controller.vencord.allPlugins.length]),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   trailing:
@@ -638,10 +674,10 @@ class DiscordSettingsScreen extends StatelessWidget {
                 Divider(height: 1, color: p.border),
                 ListTile(
                   leading: Icon(Icons.palette_outlined, color: p.textSecondary),
-                  title: Text('Vencord 主題與 QuickCSS',
+                  title: Text(tr('Vencord 主題與 QuickCSS'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    'Online Themes 連結與 CSS 變數即時套用',
+                    tr('Online Themes 連結與 CSS 變數即時套用'),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   trailing:
@@ -661,10 +697,10 @@ class DiscordSettingsScreen extends StatelessWidget {
                 ListTile(
                   leading:
                       Icon(Icons.sync_alt_rounded, color: p.textSecondary),
-                  title: Text('Vencord 設定備份與同步',
+                  title: Text(tr('Vencord 設定備份與同步'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    '相容電腦版 vencord-settings-backup.json 匯出與匯入',
+                    tr('相容電腦版 vencord-settings-backup.json 匯出與匯入'),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   trailing:
@@ -688,8 +724,8 @@ class DiscordSettingsScreen extends StatelessWidget {
                   title: Text('Message Content Intent',
                       style: TextStyle(color: p.textPrimary, fontSize: 14.5)),
                   subtitle: acc != null && !acc.hasMessageContentIntent
-                      ? const Text(
-                          'Developer Portal 尚未開啟此權限',
+                      ? Text(
+                          tr('Developer Portal 尚未開啟此權限'),
                           style: TextStyle(
                               color: DiscordPalette.yellow, fontSize: 12),
                         )
@@ -726,8 +762,8 @@ class DiscordSettingsScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.logout_rounded,
                       color: DiscordPalette.danger),
-                  title: const Text(
-                    '登出',
+                  title: Text(
+                    tr('登出'),
                     style: TextStyle(
                       color: DiscordPalette.danger,
                       fontSize: 15,
@@ -810,7 +846,7 @@ void showDiscordStatusSheet(
                 const SizedBox(height: 14),
                 Center(
                   child: Text(
-                    '設定狀態',
+                    tr('設定狀態'),
                     style: TextStyle(
                       color: p.textPrimary,
                       fontSize: 17,
@@ -828,7 +864,7 @@ void showDiscordStatusSheet(
                     children: [
                       _statusTile(
                         p,
-                        label: '線上',
+                        label: tr('線上'),
                         value: 'online',
                         current: status,
                         onTap: () => setModalState(() => status = 'online'),
@@ -836,7 +872,7 @@ void showDiscordStatusSheet(
                       Divider(height: 1, color: p.border),
                       _statusTile(
                         p,
-                        label: '閒置',
+                        label: tr('閒置'),
                         value: 'idle',
                         current: status,
                         onTap: () => setModalState(() => status = 'idle'),
@@ -844,7 +880,7 @@ void showDiscordStatusSheet(
                       Divider(height: 1, color: p.border),
                       _statusTile(
                         p,
-                        label: '請勿打擾',
+                        label: tr('請勿打擾'),
                         value: 'dnd',
                         current: status,
                         onTap: () => setModalState(() => status = 'dnd'),
@@ -852,7 +888,7 @@ void showDiscordStatusSheet(
                       Divider(height: 1, color: p.border),
                       _statusTile(
                         p,
-                        label: '隱形',
+                        label: tr('隱形'),
                         value: 'invisible',
                         current: status,
                         onTap: () => setModalState(() => status = 'invisible'),
@@ -875,12 +911,12 @@ void showDiscordStatusSheet(
                         underline: const SizedBox.shrink(),
                         dropdownColor: p.cardBg,
                         style: TextStyle(color: p.textPrimary, fontSize: 13.5),
-                        items: const [
-                          DropdownMenuItem(value: 4, child: Text('自訂狀態')),
-                          DropdownMenuItem(value: 0, child: Text('正在玩')),
-                          DropdownMenuItem(value: 2, child: Text('正在聽')),
-                          DropdownMenuItem(value: 3, child: Text('正在看')),
-                          DropdownMenuItem(value: 5, child: Text('正在競爭')),
+                        items: [
+                          DropdownMenuItem(value: 4, child: Text(tr('自訂狀態'))),
+                          DropdownMenuItem(value: 0, child: Text(tr('正在玩'))),
+                          DropdownMenuItem(value: 2, child: Text(tr('正在聽'))),
+                          DropdownMenuItem(value: 3, child: Text(tr('正在看'))),
+                          DropdownMenuItem(value: 5, child: Text(tr('正在競爭'))),
                         ],
                         onChanged: (v) {
                           if (v != null) {
@@ -894,7 +930,7 @@ void showDiscordStatusSheet(
                           controller: activityCtrl,
                           style: TextStyle(color: p.textPrimary, fontSize: 14),
                           decoration: InputDecoration(
-                            hintText: '輸入狀態文字...',
+                            hintText: tr('輸入狀態文字...'),
                             hintStyle:
                                 TextStyle(color: p.textMuted, fontSize: 14),
                             border: InputBorder.none,
@@ -928,7 +964,7 @@ void showDiscordStatusSheet(
                       );
                       Navigator.of(ctx).pop();
                     },
-                    child: const Text('儲存'),
+                    child: Text(tr('儲存')),
                   ),
                 ),
               ],
@@ -990,7 +1026,7 @@ void showSwitchAccountsSheet(
               ),
               const SizedBox(height: 14),
               Text(
-                '切換帳號',
+                tr('切換帳號'),
                 style: TextStyle(
                   color: p.textPrimary,
                   fontSize: 17,
@@ -1052,7 +1088,7 @@ void showSwitchAccountsSheet(
                     }
                     await controller.logoutCurrentAccount();
                   },
-                  child: const Text('新增帳號'),
+                  child: Text(tr('新增帳號')),
                 ),
               ),
             ],

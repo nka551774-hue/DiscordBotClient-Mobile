@@ -5,6 +5,7 @@ import '../../models/discord_models.dart';
 import '../theme/app_theme.dart';
 import 'discord_markdown.dart';
 import 'media_viewer.dart';
+import '../../l10n/strings.dart';
 
 /// Renders a message's raw `components` tree: classic action rows (buttons /
 /// selects) and Components V2 (container, text display, section, thumbnail,
@@ -368,7 +369,7 @@ class DiscordComponentsView extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              c['placeholder']?.toString() ?? '選擇一個選項',
+              c['placeholder']?.toString() ?? tr('選擇一個選項'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: palette.textMuted, fontSize: 14),

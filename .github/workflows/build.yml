@@ -170,12 +170,18 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.8.2
+          tag_name: v1.9.0
           make_latest: true
-          name: "DiscordBotClient Mobile v1.8.2 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.9.0 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.8.2
+            ## DiscordBotClient Mobile v1.9.0
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.9.0 更新內容
+            - **多國語言**：設定 > 應用程式設定新增「Language / 語言 / 言語」，可切換中文、English、日本語（全介面約 400 個字串）。
+            - **視覺化進階訊息編輯器**：分區卡片式表單（訊息內容、顏色、作者、內文、欄位、圖片、頁尾）、即時「預覽」分頁（以機器人身分模擬訊息，JSON / Components V2 也能預覽）、12 色預設調色盤與可拖曳的 HSV 調色盤（飽和度 / 亮度方塊 + 色相條 + Hex），網址欄位即時顯示縮圖、字數上限提示。
+            - **全螢幕無黑邊**：啟用 edge-to-edge，進入頻道時狀態列與底部手勢列區域改為聊天背景色。
+            - **審計日誌**：以使用者名稱與頭像、#頻道、@身分組取代數字 ID，並顯示時間與更多操作類型。
 
             ### v1.8.2 更新內容
             - **嵌入訊息內的表情符號**：粗體、斜體、底線、刪除線內的自訂表情、提及與連結現在都會正確顯示（嵌入標題與欄位名稱亦同）。

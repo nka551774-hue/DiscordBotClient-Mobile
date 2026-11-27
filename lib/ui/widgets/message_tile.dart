@@ -13,6 +13,7 @@ import 'discord_markdown.dart';
 import 'media_viewer.dart';
 import 'message_components.dart';
 import 'vencord_sheets.dart';
+import '../../l10n/strings.dart';
 
 class MessageTile extends StatefulWidget {
   final BotClientController controller;
@@ -141,11 +142,11 @@ class _MessageTileState extends State<MessageTile> {
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
     if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-      return '今天 $hh:$mm';
+      return trf('今天 {0}:{1}', [hh, mm]);
     }
     final y = now.subtract(const Duration(days: 1));
     if (dt.year == y.year && dt.month == y.month && dt.day == y.day) {
-      return '昨天 $hh:$mm';
+      return trf('昨天 {0}:{1}', [hh, mm]);
     }
     return '${dt.year}/${dt.month}/${dt.day} $hh:$mm';
   }
@@ -270,13 +271,13 @@ class _MessageTileState extends State<MessageTile> {
                         _sheetTile(
                           ctx,
                           icon: Icons.edit_outlined,
-                          label: '編輯訊息',
+                          label: tr('編輯訊息'),
                           onTap: () => widget.onEdit(message),
                         ),
                       _sheetTile(
                         ctx,
                         icon: Icons.reply_rounded,
-                        label: '回覆',
+                        label: tr('回覆'),
                         onTap: () => widget.onReply(message),
                       ),
                     ],
@@ -285,7 +286,7 @@ class _MessageTileState extends State<MessageTile> {
                         _sheetTile(
                           ctx,
                           icon: Icons.copy_rounded,
-                          label: '複製文字',
+                          label: tr('複製文字'),
                           onTap: () {
                             Clipboard.setData(
                                 ClipboardData(text: message.content));
@@ -295,13 +296,13 @@ class _MessageTileState extends State<MessageTile> {
                         _sheetTile(
                           ctx,
                           icon: Icons.push_pin_outlined,
-                          label: message.pinned ? '取消釘選訊息' : '釘選訊息',
+                          label: message.pinned ? tr('取消釘選訊息') : tr('釘選訊息'),
                           onTap: () => widget.onTogglePin(message),
                         ),
                       _sheetTile(
                         ctx,
                         icon: Icons.link_rounded,
-                        label: '複製訊息連結',
+                        label: tr('複製訊息連結'),
                         onTap: () {
                           final gid =
                               widget.guild?.id ?? message.guildId ?? '@me';
@@ -326,7 +327,7 @@ class _MessageTileState extends State<MessageTile> {
                             color: palette.textPrimary,
                           ),
                           title: Text(
-                            isAdvancedEditor ? '進階訊息 / Embed 編輯器' : '編輯 Embed',
+                            isAdvancedEditor ? tr('進階訊息 / Embed 編輯器') : tr('編輯 Embed'),
                             style: TextStyle(
                               color: palette.textPrimary,
                               fontSize: 14.5,
@@ -345,8 +346,8 @@ class _MessageTileState extends State<MessageTile> {
                           ctx,
                           icon: Icons.translate_rounded,
                           label: message.translatedText != null
-                              ? '隱藏翻譯結果'
-                              : '翻譯訊息 (Translate)',
+                              ? tr('隱藏翻譯結果')
+                              : tr('翻譯訊息 (Translate)'),
                           onTap: () async {
                             try {
                               await widget.controller
@@ -354,7 +355,7 @@ class _MessageTileState extends State<MessageTile> {
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('翻譯失敗：$e')),
+                                  SnackBar(content: Text(trf('翻譯失敗：{0}', [e]))),
                                 );
                               }
                             }
@@ -364,7 +365,7 @@ class _MessageTileState extends State<MessageTile> {
                         _sheetTile(
                           ctx,
                           icon: Icons.code_rounded,
-                          label: '檢視原始資料 (View Raw)',
+                          label: tr('檢視原始資料 (View Raw)'),
                           onTap: () {
                             showVencordRawModal(
                               context,
@@ -387,7 +388,7 @@ class _MessageTileState extends State<MessageTile> {
                         _sheetTile(
                           ctx,
                           icon: Icons.history_toggle_off_rounded,
-                          label: '清除訊息紀錄 (MessageLogger)',
+                          label: tr('清除訊息紀錄 (MessageLogger)'),
                           onTap: () => widget.controller
                               .clearLoggedMessageHistory(message),
                         ),
@@ -396,7 +397,7 @@ class _MessageTileState extends State<MessageTile> {
                       _sheetTile(
                         ctx,
                         icon: Icons.tag_rounded,
-                        label: '複製訊息 ID',
+                        label: tr('複製訊息 ID'),
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: message.id));
                         },
@@ -406,7 +407,7 @@ class _MessageTileState extends State<MessageTile> {
                         _sheetTile(
                           ctx,
                           icon: Icons.delete_outline_rounded,
-                          label: '刪除訊息',
+                          label: tr('刪除訊息'),
                           danger: true,
                           onTap: () => widget.onDelete(message),
                         ),
@@ -534,7 +535,7 @@ class _MessageTileState extends State<MessageTile> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Text(
-                      '${message.timestamp.year}年${message.timestamp.month}月${message.timestamp.day}日',
+                      trf('{0}年{1}月{2}日', [message.timestamp.year, message.timestamp.month, message.timestamp.day]),
                       style: TextStyle(
                         color: palette.textMuted,
                         fontSize: 11.5,
@@ -661,7 +662,7 @@ class _MessageTileState extends State<MessageTile> {
                                 Expanded(
                                   child: Text(
                                     message.referencedMessage!.content.isEmpty
-                                        ? '點擊查看附件'
+                                        ? tr('點擊查看附件')
                                         : message.referencedMessage!.content,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -795,8 +796,8 @@ class _MessageTileState extends State<MessageTile> {
                                               color: palette.textMuted,
                                             ),
                                           if (message.isDeleted)
-                                            const Text(
-                                              '(已刪除)',
+                                            Text(
+                                              tr('(已刪除)'),
                                               style: TextStyle(
                                                 color: DiscordPalette.danger,
                                                 fontSize: 11,
@@ -827,7 +828,7 @@ class _MessageTileState extends State<MessageTile> {
                                         child: Opacity(
                                           opacity: 0.56,
                                           child: Text(
-                                            '${edit.content}  (編輯前 $eh:$em)',
+                                            trf('{0}  (編輯前 {1}:{2})', [edit.content, eh, em]),
                                             style: TextStyle(
                                               color: palette.textSecondary,
                                               fontSize: 13.5,
@@ -862,9 +863,9 @@ class _MessageTileState extends State<MessageTile> {
                                           : null,
                                       child: DiscordMarkdownView(
                                         text: message.isDeleted
-                                            ? '${message.content} *(已刪除)*'
+                                            ? trf('{0} *(已刪除)*', [message.content])
                                             : (message.editedTimestamp != null
-                                                ? '${message.content} *(已編輯)*'
+                                                ? trf('{0} *(已編輯)*', [message.content])
                                                 : message.content),
                                         palette: palette,
                                         guild: widget.guild,
@@ -1233,6 +1234,26 @@ class _AttachmentView extends StatelessWidget {
   }
 }
 
+/// Public read-only embed renderer (used by the message editor preview).
+class DiscordEmbedPreview extends StatelessWidget {
+  final DiscordEmbed embed;
+  final DiscordPalette palette;
+
+  const DiscordEmbedPreview({
+    super.key,
+    required this.embed,
+    required this.palette,
+  });
+
+  @override
+  Widget build(BuildContext context) => _EmbedCard(
+        embed: embed,
+        palette: palette,
+        ecoMode: false,
+        onOpenImage: (_) {},
+      );
+}
+
 class _EmbedCard extends StatelessWidget {
   final DiscordEmbed embed;
   final DiscordPalette palette;
@@ -1264,7 +1285,7 @@ class _EmbedCard extends StatelessWidget {
     final mm = t.minute.toString().padLeft(2, '0');
     final now = DateTime.now();
     if (t.year == now.year && t.month == now.month && t.day == now.day) {
-      return '今天 $hh:$mm';
+      return trf('今天 {0}:{1}', [hh, mm]);
     }
     return '${t.year}/${t.month}/${t.day} $hh:$mm';
   }

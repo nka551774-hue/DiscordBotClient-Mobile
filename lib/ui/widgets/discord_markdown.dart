@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/discord_models.dart';
 import '../theme/app_theme.dart';
+import '../../l10n/strings.dart';
 
 class DiscordMarkdownView extends StatelessWidget {
   final String text;
@@ -165,8 +166,8 @@ class _CodeBlockBox extends StatelessWidget {
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: code));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('已複製程式碼'),
+                      SnackBar(
+                        content: Text(tr('已複製程式碼')),
                         duration: Duration(seconds: 1),
                       ),
                     );
@@ -264,8 +265,8 @@ class _RichParagraphState extends State<_RichParagraph> {
   /// Official rule: a message made only of (≤ 30) emojis renders them jumbo.
   static bool _isJumboOnly(String text) {
     final body = text
-        .replaceAll('*(已編輯)*', '')
-        .replaceAll('*(已刪除)*', '');
+        .replaceAll(tr('*(已編輯)*'), '')
+        .replaceAll(tr('*(已刪除)*'), '');
     var count = _customEmojiTokenRegex.allMatches(body).length;
     final noCustom = body.replaceAll(_customEmojiTokenRegex, '');
     count += _unicodeEmojiRegex.allMatches(noCustom).length;
@@ -323,7 +324,7 @@ class _RichParagraphState extends State<_RichParagraph> {
               _revealedSpoilers.contains(currentSpoilerIdx);
           final inner = token.substring(2, token.length - 2);
           spans.add(TextSpan(
-            text: revealed ? inner : ' 劇透內容 ',
+            text: revealed ? inner : tr(' 劇透內容 '),
             style: lineStyle.copyWith(
               backgroundColor: revealed
                   ? const Color(0xFF2B2D31)

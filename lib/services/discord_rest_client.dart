@@ -692,9 +692,14 @@ class DiscordRestClient {
       query: {'limit': '30'},
     ) as Map<String, dynamic>;
     final entries = res['audit_log_entries'] as List<dynamic>? ?? const [];
+    final users = <String, DiscordUser>{
+      for (final u in (res['users'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>())
+        u['id'].toString(): DiscordUser.fromJson(u),
+    };
     return entries
         .whereType<Map<String, dynamic>>()
-        .map(AuditLogEntry.fromJson)
+        .map((j) => AuditLogEntry.fromJson(j).withUsers(users))
         .toList();
   }
 
