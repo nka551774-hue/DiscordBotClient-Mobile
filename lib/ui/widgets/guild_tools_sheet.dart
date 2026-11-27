@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
+import 'discord_icons.dart';
 import 'user_profile_sheet.dart';
 import 'vencord_sheets.dart';
 
@@ -54,6 +55,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
   bool _loading = false;
   String? _loadedGuildId;
   final _searchCtrl = TextEditingController();
+  String _filter = '';
 
   @override
   void initState() {
@@ -273,8 +275,16 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     final canManageChannels =
         DiscordPermissions.has(perms, DiscordPermissions.manageChannels);
 
-    final groupedBuckets = (guild != null && _members.isNotEmpty)
-        ? _groupMembersByHoistedRole(guild, _members)
+    final q = _filter.trim().toLowerCase();
+    final visibleMembers = q.isEmpty
+        ? _members
+        : _members
+            .where((m) =>
+                m.effectiveName.toLowerCase().contains(q) ||
+                m.user.username.toLowerCase().contains(q))
+            .toList();
+    final groupedBuckets = (guild != null && visibleMembers.isNotEmpty)
+        ? _groupMembersByHoistedRole(guild, visibleMembers)
         : const <_RoleGroupBucket>[];
 
     return Container(
@@ -285,11 +295,21 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
           if (channel != null) ...[
             Row(
               children: [
-                Icon(
-                  channel.isDm ? Icons.alternate_email : Icons.tag_rounded,
-                  color: p.textSecondary,
-                  size: 22,
-                ),
+                if (channel.isDm)
+                  Icon(Icons.alternate_email,
+                      color: p.textSecondary, size: 22)
+                else if (channel.isThread)
+                  Icon(Icons.chat_bubble_outline_rounded,
+                      color: p.textSecondary, size: 20)
+                else if (channel.type == 5)
+                  Icon(Icons.campaign_rounded,
+                      color: p.textSecondary, size: 22)
+                else
+                  DiscordChannelHashIcon(
+                    locked: false,
+                    color: p.textSecondary,
+                    size: 22,
+                  ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -419,6 +439,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
             else ...[
               TextField(
                 controller: _searchCtrl,
+                onChanged: (v) => setState(() => _filter = v),
                 onSubmitted: (q) => _ensureMembersLoaded(query: q),
                 style: TextStyle(color: p.textPrimary, fontSize: 14),
                 decoration: InputDecoration(
@@ -525,66 +546,83 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     final nameColor =
         roleColorInt != null ? Color(0xFF000000 | roleColorInt) : p.textPrimary;
 
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        radius: 17,
-        backgroundImage: NetworkImage(
-          member != null
-              ? member.effectiveAvatarUrl(guildId, size: 64)
-              : user.avatarUrl(size: 64),
-        ),
-      ),
-      title: Row(
-        children: [
-          Flexible(
-            child: Text(
-              displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: nameColor,
-                fontSize: 14.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          if (user.bot) ...[
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
-              decoration: BoxDecoration(
-                color: DiscordPalette.blurple,
-                borderRadius: BorderRadius.circular(3.5),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (user.isVerifiedBot) ...[
-                    const Icon(Icons.check_rounded,
-                        size: 10, color: Colors.white),
-                    const SizedBox(width: 1),
-                  ],
-                  const Text(
-                    'APP',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
+    final acc = widget.controller.activeAccount;
+    final isSelf = acc != null && acc.id == user.id;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundImage: NetworkImage(
+                    member != null
+                        ? member.effectiveAvatarUrl(guildId, size: 64)
+                        : user.avatarUrl(size: 64),
+                  ),
+                ),
+                if (isSelf)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: DiscordStatusBadge(
+                      status: widget.controller.botStatus,
+                      size: 12,
+                      borderColor: p.sidebarBg,
+                      borderWidth: 2.5,
                     ),
                   ),
-                ],
+              ],
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: nameColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
+            if (user.bot) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: DiscordPalette.blurple,
+                  borderRadius: BorderRadius.circular(3.5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (user.isVerifiedBot) ...[
+                      const Icon(Icons.check_rounded,
+                          size: 10, color: Colors.white),
+                      const SizedBox(width: 1),
+                    ],
+                    const Text(
+                      'APP',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
-      ),
-      subtitle: Text(
-        user.username,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: p.textMuted, fontSize: 12),
+        ),
       ),
       onTap: () => showUserProfileSheet(
         context,

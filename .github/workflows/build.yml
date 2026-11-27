@@ -170,12 +170,16 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.7.0
+          tag_name: v1.7.1
           make_latest: true
-          name: "DiscordBotClient Mobile v1.7.0 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.7.1 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.7.0
+            ## DiscordBotClient Mobile v1.7.1
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.7.1 更新內容 (聊天標題列與成員列表)
+            - **聊天標題列**：頻道圖示改用與頻道列表相同的 `#` / 公告 / 討論串圖示，名稱後加上官方「>」提示點擊可開啟頻道詳情，成員按鈕改為官方雙人圖示。
+            - **成員列表**：改為官方單行成員列（32px 頭像、身分組顏色名稱、APP 標籤，不再顯示使用者名稱副標），機器人本身顯示即時狀態；搜尋框輸入時即時篩選，按下送出再向伺服器搜尋。
 
             ### v1.7.0 更新內容 (對齊官方 Discord 手機版介面與互動)
             - **官方底部導覽列**：以「首頁 / 通知 / 你」三分頁取代懸浮 You Bar；通知改為完整分頁並顯示相對時間，「你」分頁直接嵌入個人資料頁，長按「你」可切換帳號，返回鍵會先回到「首頁」。

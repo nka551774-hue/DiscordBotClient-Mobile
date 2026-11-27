@@ -2873,18 +2873,27 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             backgroundImage:
                                 NetworkImage(dmUser.avatarUrl(size: 64)),
                           )
+                        else if (channel.isForum)
+                          Icon(Icons.forum_outlined,
+                              size: 21, color: p.textMuted)
+                        else if (channel.isVoice)
+                          Icon(Icons.volume_up_rounded,
+                              size: 21, color: p.textMuted)
+                        else if (channel.isThread)
+                          Icon(Icons.chat_bubble_outline_rounded,
+                              size: 19, color: p.textMuted)
+                        else if (channel.type == 5)
+                          Icon(Icons.campaign_rounded,
+                              size: 21, color: p.textMuted)
                         else
-                          Icon(
-                            channel.isForum
-                                ? Icons.forum_outlined
-                                : (channel.isVoice
-                                    ? Icons.volume_up_rounded
-                                    : Icons.tag_rounded),
-                            size: 21,
+                          DiscordChannelHashIcon(
+                            locked: false,
                             color: p.textMuted,
+                            size: 21,
                           ),
                         const SizedBox(width: 8),
-                        Expanded(
+                        // Official header: name + ">" chevron hinting tap-for-details
+                        Flexible(
                           child: Text(
                             channel.displayTitle,
                             maxLines: 1,
@@ -2896,6 +2905,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             ),
                           ),
                         ),
+                        Icon(Icons.chevron_right_rounded,
+                            size: 18, color: p.textMuted),
                       ],
                     ),
                   ),
@@ -2917,7 +2928,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                 ),
               IconButton(
                 icon: Icon(
-                  channel.isDm ? Icons.more_horiz_rounded : Icons.group_rounded,
+                  channel.isDm
+                      ? Icons.more_horiz_rounded
+                      : Icons.people_alt_rounded,
                   color: p.textSecondary,
                   size: 22,
                 ),
