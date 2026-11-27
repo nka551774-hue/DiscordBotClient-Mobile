@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -351,4 +353,201 @@ class DiscordChannelHashIcon extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Glyphs from the official iOS redesign icon set that Material has no close
+/// match for, redrawn as vectors on a 24×24 grid.
+enum DiscordGlyphType { apps, thread, group, chat, reaction, gift, voice }
+
+class DiscordGlyph extends StatelessWidget {
+  final DiscordGlyphType type;
+  final double size;
+  final Color color;
+
+  const DiscordGlyph(
+    this.type, {
+    super.key,
+    this.size = 24,
+    this.color = Colors.white,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size.square(size),
+      painter: _GlyphPainter(type, color),
+    );
+  }
+}
+
+class _GlyphPainter extends CustomPainter {
+  final DiscordGlyphType type;
+  final Color color;
+  const _GlyphPainter(this.type, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 24;
+    canvas.save();
+    canvas.scale(s);
+    final fill = Paint()
+      ..color = color
+      ..isAntiAlias = true;
+    Paint stroke(double w) => Paint()
+      ..color = color
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final clear = Paint()..blendMode = BlendMode.clear;
+    const bounds = Rect.fromLTWH(-2, -2, 28, 28);
+
+    switch (type) {
+      case DiscordGlyphType.chat:
+        canvas.drawCircle(const Offset(12, 11), 9.5, fill);
+        canvas.drawPath(
+          Path()
+            ..moveTo(4, 15)
+            ..lineTo(2.4, 21.6)
+            ..lineTo(9, 19.6)
+            ..close(),
+          fill,
+        );
+      case DiscordGlyphType.voice:
+        canvas.drawRRect(
+            RRect.fromLTRBR(2.5, 8.6, 7.5, 15.4, const Radius.circular(1.2)),
+            fill);
+        final cone = Path()
+          ..moveTo(6.5, 8.6)
+          ..lineTo(12.6, 4)
+          ..lineTo(12.6, 20)
+          ..lineTo(6.5, 15.4)
+          ..close();
+        canvas.drawPath(cone, fill);
+        canvas.drawPath(cone, stroke(1.2));
+        const c = Offset(12.6, 12);
+        canvas.drawArc(Rect.fromCircle(center: c, radius: 4.2), -0.9, 1.8,
+            false, stroke(2.2));
+        canvas.drawArc(Rect.fromCircle(center: c, radius: 8.2), -0.95, 1.9,
+            false, stroke(2.2));
+      case DiscordGlyphType.thread:
+        // Thread spool: parallel diagonal bars, the middle ones longest.
+        const lens = [3.2, 5.2, 5.2, 3.2];
+        for (var i = 0; i < 4; i++) {
+          final k = (i - 1.5) * 3.6;
+          final cx = 12 + k * 0.7071, cy = 12 + k * 0.7071;
+          final l = lens[i];
+          canvas.drawLine(Offset(cx - l * 0.7071, cy + l * 0.7071),
+              Offset(cx + l * 0.7071, cy - l * 0.7071), stroke(3));
+        }
+      case DiscordGlyphType.group:
+        canvas.saveLayer(bounds, Paint());
+        canvas.drawCircle(const Offset(17, 6.6), 3.3, fill);
+        canvas.drawRRect(
+          RRect.fromLTRBAndCorners(13.5, 11.4, 22.5, 18,
+              topLeft: const Radius.circular(4.5),
+              topRight: const Radius.circular(4.5),
+              bottomLeft: const Radius.circular(1.5),
+              bottomRight: const Radius.circular(1.5)),
+          fill,
+        );
+        // Gap around the front person.
+        canvas.drawCircle(const Offset(9, 8.6), 5.8, clear);
+        canvas.drawRRect(
+          RRect.fromLTRBAndCorners(0.2, 11.8, 17.8, 23,
+              topLeft: const Radius.circular(8.5),
+              topRight: const Radius.circular(8.5)),
+          clear,
+        );
+        canvas.drawCircle(const Offset(9, 8.6), 4.1, fill);
+        canvas.drawRRect(
+          RRect.fromLTRBAndCorners(2, 13.6, 16, 21.2,
+              topLeft: const Radius.circular(7),
+              topRight: const Radius.circular(7),
+              bottomLeft: const Radius.circular(1.5),
+              bottomRight: const Radius.circular(1.5)),
+          fill,
+        );
+        canvas.restore();
+      case DiscordGlyphType.reaction:
+        canvas.saveLayer(bounds, Paint());
+        canvas.drawCircle(const Offset(12, 12), 10, fill);
+        canvas.drawCircle(const Offset(8.7, 10), 1.45, clear);
+        canvas.drawCircle(const Offset(15.3, 10), 1.45, clear);
+        canvas.drawArc(
+          Rect.fromCircle(center: const Offset(12, 12.4), radius: 4.6),
+          0.5,
+          2.14,
+          false,
+          Paint()
+            ..blendMode = BlendMode.clear
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..strokeCap = StrokeCap.round,
+        );
+        canvas.restore();
+      case DiscordGlyphType.gift:
+        canvas.saveLayer(bounds, Paint());
+        canvas.drawRRect(
+            RRect.fromLTRBR(2.6, 7.6, 21.4, 11.8, const Radius.circular(1.4)),
+            fill);
+        canvas.drawRRect(
+          RRect.fromLTRBAndCorners(4.2, 12.9, 19.8, 21.4,
+              bottomLeft: const Radius.circular(1.6),
+              bottomRight: const Radius.circular(1.6)),
+          fill,
+        );
+        canvas.drawRect(const Rect.fromLTRB(11.1, 7, 12.9, 22), clear);
+        canvas.restore();
+        final bow = stroke(2);
+        canvas.drawPath(
+          Path()
+            ..moveTo(11.6, 6.8)
+            ..cubicTo(9.6, 2.2, 5.2, 3.2, 6.4, 5.6)
+            ..cubicTo(7.2, 7, 10, 6.9, 11.6, 6.8),
+          bow,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(12.4, 6.8)
+            ..cubicTo(14.4, 2.2, 18.8, 3.2, 17.6, 5.6)
+            ..cubicTo(16.8, 7, 14, 6.9, 12.4, 6.8),
+          bow,
+        );
+      case DiscordGlyphType.apps:
+        canvas.drawRRect(
+            RRect.fromLTRBR(2.5, 2.5, 10.5, 10.5, const Radius.circular(2.6)),
+            fill);
+        final tri = Path()
+          ..moveTo(17.5, 3)
+          ..lineTo(21.6, 10)
+          ..lineTo(13.4, 10)
+          ..close();
+        canvas.drawPath(tri, fill);
+        canvas.drawPath(tri, stroke(1.6));
+        const b = Offset(6.5, 17.5);
+        canvas.drawCircle(b, 3.5, fill);
+        for (var i = 0; i < 8; i++) {
+          final a = i * math.pi / 4;
+          canvas.drawCircle(
+              b + Offset(3.3 * math.cos(a), 3.3 * math.sin(a)), 1.5, fill);
+        }
+        canvas.drawPath(
+          Path()
+            ..moveTo(17.5, 12.6)
+            ..quadraticBezierTo(18.3, 16.7, 22.4, 17.5)
+            ..quadraticBezierTo(18.3, 18.3, 17.5, 22.4)
+            ..quadraticBezierTo(16.7, 18.3, 12.6, 17.5)
+            ..quadraticBezierTo(16.7, 16.7, 17.5, 12.6)
+            ..close(),
+          fill,
+        );
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlyphPainter old) =>
+      old.type != type || old.color != color;
 }

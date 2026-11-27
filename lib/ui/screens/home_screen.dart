@@ -865,6 +865,216 @@ class _HomeScreenState extends State<HomeScreen>
 );
 }
 
+  /// Official iOS long-press sheet: header + grouped rounded rows.
+  void _showActionSheet({
+    required DiscordPalette p,
+    required Widget leading,
+    required String title,
+    String? subtitle,
+    required List<List<(IconData, String, VoidCallback, bool)>> groups,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: p.sidebarBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: p.textMuted.withAlpha(110),
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  leading,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                color: p.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800)),
+                        if (subtitle != null)
+                          Text(subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: p.textMuted, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              for (final group in groups) ...[
+                Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: p.elevatedBg,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < group.length; i++) ...[
+                        if (i > 0)
+                          Divider(
+                              height: 1,
+                              indent: 52,
+                              color: p.border.withAlpha(120)),
+                        InkWell(
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            group[i].$3();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                            child: Row(
+                              children: [
+                                Icon(group[i].$1,
+                                    size: 22,
+                                    color: group[i].$4
+                                        ? DiscordPalette.danger
+                                        : p.textPrimary),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    group[i].$2,
+                                    style: TextStyle(
+                                      color: group[i].$4
+                                          ? DiscordPalette.danger
+                                          : p.textPrimary,
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _copyText(String text, String toast) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(toast), duration: const Duration(seconds: 1)));
+  }
+
+  void _showChannelActions(BotClientController ctrl, DiscordPalette p,
+      DiscordChannel ch, String? guildId) {
+    final muted = ctrl.isMuted(ch.id);
+    final dmUser = ch.dmRecipient;
+    _showActionSheet(
+      p: p,
+      leading: dmUser != null
+          ? CircleAvatar(
+              radius: 20,
+              backgroundImage: NetworkImage(dmUser.avatarUrl(size: 96)))
+          : CircleAvatar(
+              radius: 20,
+              backgroundColor: p.elevatedBg,
+              child: ch.isVoice
+                  ? DiscordGlyph(DiscordGlyphType.voice,
+                      size: 20, color: p.textMuted)
+                  : DiscordChannelHashIcon(
+                      locked: false, color: p.textMuted, size: 20),
+            ),
+      title: ch.displayTitle,
+      subtitle: guildId == null ? dmUser?.username : null,
+      groups: [
+        [
+          (Icons.mark_chat_read_outlined, tr('標示為已讀'),
+              () => ctrl.markChannelRead(ch.id), false),
+          (
+            muted
+                ? Icons.notifications_active_outlined
+                : Icons.notifications_off_outlined,
+            muted ? tr('取消靜音') : tr('靜音'),
+            () => ctrl.toggleMute(ch.id),
+            false
+          ),
+        ],
+        [
+          if (guildId != null)
+            (Icons.link_rounded, tr('複製連結'),
+                () => _copyText(
+                    'https://discord.com/channels/$guildId/${ch.id}',
+                    tr('已複製連結')),
+                false),
+          (Icons.badge_outlined, tr('複製 ID'),
+              () => _copyText(ch.id, tr('已複製 ID')), false),
+        ],
+      ],
+    );
+  }
+
+  void _showGuildActions(
+      BotClientController ctrl, DiscordPalette p, DiscordGuild g) {
+    final muted = ctrl.isMuted(g.id);
+    final iconUrl = g.iconUrl(size: 96);
+    _showActionSheet(
+      p: p,
+      leading: Container(
+        width: 42,
+        height: 42,
+        clipBehavior: Clip.antiAlias,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: p.elevatedBg, borderRadius: BorderRadius.circular(14)),
+        child: iconUrl != null
+            ? Image.network(iconUrl, fit: BoxFit.cover, width: 42, height: 42)
+            : Text(g.initials,
+                style: TextStyle(
+                    color: p.textPrimary, fontWeight: FontWeight.w700)),
+      ),
+      title: g.name,
+      groups: [
+        [
+          (Icons.mark_chat_read_outlined, tr('標示為已讀'),
+              () => ctrl.markGuildRead(g.id), false),
+          (
+            muted
+                ? Icons.notifications_active_outlined
+                : Icons.notifications_off_outlined,
+            muted ? tr('取消靜音伺服器') : tr('靜音伺服器'),
+            () => ctrl.toggleMute(g.id),
+            false
+          ),
+        ],
+        [
+          (Icons.badge_outlined, tr('複製伺服器 ID'),
+              () => _copyText(g.id, tr('已複製 ID')), false),
+        ],
+      ],
+    );
+  }
+
   /// Official red mention / unread counter (pill with a ring in the rail colour).
   Widget _redCountBadge(int count, Color ring) {
     return Container(
@@ -941,8 +1151,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 borderRadius:
                                     BorderRadius.circular(isDmMode ? 14 : 23),
                               ),
-                              child: const Icon(
-                                Icons.chat_bubble_rounded,
+                              child: const DiscordGlyph(
+                                DiscordGlyphType.chat,
                                 color: Colors.white,
                                 size: 21,
                               ),
@@ -1004,6 +1214,10 @@ class _HomeScreenState extends State<HomeScreen>
                         padding: const EdgeInsets.symmetric(vertical: 4.5),
                         child: GestureDetector(
                           onTap: () => ctrl.selectGuild(g.id),
+                          onLongPress: () {
+                            HapticFeedback.mediumImpact();
+                            _showGuildActions(ctrl, p, g);
+                          },
                           child: Row(
                             children: [
                               AnimatedContainer(
@@ -1997,7 +2211,9 @@ class _HomeScreenState extends State<HomeScreen>
     final selected =
         ((!ch.isVoice || isHiddenChannel) && ctrl.selectedChannelId == ch.id) ||
             isConnectedVoice;
+    final muted = ctrl.isChannelMuted(ch.id, guild.id);
     final unread = !isHiddenChannel &&
+        !muted &&
         ctrl.selectedChannelId != ch.id &&
         ctrl.unreadChannelIds.contains(ch.id);
     final mentions = isHiddenChannel ? 0 : ctrl.mentionCount(ch.id);
@@ -2035,7 +2251,8 @@ class _HomeScreenState extends State<HomeScreen>
     } else if (ch.isStageVoice) {
       leadingIcon = Icon(Icons.podcasts_rounded, size: 20, color: iconColor);
     } else if (ch.isVoice) {
-      leadingIcon = Icon(Icons.volume_up_rounded, size: 20, color: iconColor);
+      leadingIcon =
+          DiscordGlyph(DiscordGlyphType.voice, size: 20, color: iconColor);
     } else {
       leadingIcon = DiscordChannelHashIcon(
         locked: isLocked,
@@ -2061,6 +2278,12 @@ class _HomeScreenState extends State<HomeScreen>
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
+            onLongPress: isHiddenChannel
+                ? null
+                : () {
+                    HapticFeedback.mediumImpact();
+                    _showChannelActions(ctrl, p, ch, guild.id);
+                  },
             onTap: () {
               if (ch.isVoice && !isHiddenChannel) {
                 _openVoiceSheet(guild, ch);
@@ -2441,6 +2664,10 @@ class _HomeScreenState extends State<HomeScreen>
                                   ),
                                 ),
                           onTap: () => _openChannelChat(ch.id, guildId: null),
+                          onLongPress: () {
+                            HapticFeedback.mediumImpact();
+                            _showChannelActions(ctrl, p, ch, null);
+                          },
                         ),
                       ],
                     );
@@ -3037,6 +3264,36 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     );
   }
 
+  /// Official red "NEW" line above the first unread message.
+  Widget _newMessagesDivider() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 0, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(height: 1, color: DiscordPalette.danger),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: const BoxDecoration(
+              color: DiscordPalette.danger,
+              borderRadius:
+                  BorderRadius.horizontal(left: Radius.circular(4)),
+            ),
+            child: Text(
+              tr('新訊息'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _conversationStart(
     BotClientController ctrl,
     DiscordPalette p,
@@ -3335,10 +3592,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                           Icon(Icons.forum_outlined,
                               size: 21, color: p.textMuted)
                         else if (channel.isVoice)
-                          Icon(Icons.volume_up_rounded,
+                          DiscordGlyph(DiscordGlyphType.voice,
                               size: 21, color: p.textMuted)
                         else if (channel.isThread)
-                          Icon(Icons.chat_bubble_outline_rounded,
+                          DiscordGlyph(DiscordGlyphType.thread,
                               size: 19, color: p.textMuted)
                         else if (channel.type == 5)
                           Icon(Icons.campaign_rounded,
@@ -3375,8 +3632,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                   tooltip: ctrl.activeVoiceChannelId == channel.id
                       ? tr('開啟語音房間')
                       : tr('加入語音'),
-                  icon: Icon(
-                    Icons.volume_up_rounded,
+                  icon: DiscordGlyph(
+                    DiscordGlyphType.voice,
                     color: ctrl.activeVoiceChannelId == channel.id
                         ? DiscordPalette.green
                         : p.textSecondary,
@@ -3385,13 +3642,11 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                   onPressed: () => widget.onOpenVoiceRoom(guild, channel),
                 ),
               IconButton(
-                icon: Icon(
-                  channel.isDm
-                      ? Icons.more_horiz_rounded
-                      : Icons.people_alt_rounded,
-                  color: p.textSecondary,
-                  size: 22,
-                ),
+                icon: channel.isDm
+                    ? Icon(Icons.more_horiz_rounded,
+                        color: p.textSecondary, size: 22)
+                    : DiscordGlyph(DiscordGlyphType.group,
+                        color: p.textSecondary, size: 22),
                 onPressed: widget.onToggleRightDrawer,
               ),
             ],
@@ -3610,7 +3865,17 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                   showDateDivider = true;
                                 }
 
-                                return MessageTile(
+                                final anchor =
+                                    ctrl.unreadAnchor(channel.id);
+                                final firstUnread = anchor != null &&
+                                    msg.author.id != ctrl.activeAccount?.id &&
+                                    compareSnowflakes(msg.id, anchor) > 0 &&
+                                    (index + 1 >= messages.length ||
+                                        compareSnowflakes(
+                                                messages[index + 1].id,
+                                                anchor) <=
+                                            0);
+                                final tile = MessageTile(
                                   key: ValueKey(msg.id),
                                   controller: ctrl,
                                   message: msg,
@@ -3769,6 +4034,14 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                     onNavigateToDm: widget.onEnsureCenterChat,
                                   ),
                                   onNavigateToDm: widget.onEnsureCenterChat,
+                                );
+                                if (!firstUnread) return tile;
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    _newMessagesDivider(),
+                                    tile,
+                                  ],
                                 );
                               },
                             );
@@ -4009,9 +4282,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                 }
                               },
                             ),
-                            icon: Icon(
-                              Icons.emoji_emotions_outlined,
-                              size: 19,
+                            icon: DiscordGlyph(
+                              DiscordGlyphType.reaction,
+                              size: 20,
                               color: p.textSecondary,
                             ),
                           ),

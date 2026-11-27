@@ -18,6 +18,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const String _kEcoSettingsKey = 'dbc_eco_settings_v1';
   static const String _kDmChannelsPrefix = 'dbc_dm_channels_';
   static const String _kReadStatePrefix = 'dbc_read_state_';
+  static const String _kMutedPrefix = 'dbc_muted_';
   static const int _guildsPerShard = 1000;
 
   SharedPreferences? _prefs;
@@ -617,9 +618,39 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     await _prefs?.setString(_kAccountsKey, encoded);
   }
 
+  // Locally muted channel / guild ids (official "Mute" in long-press sheets).
+  final Set<String> _mutedIds = <String>{};
+  bool isMuted(String id) => _mutedIds.contains(id);
+  bool isChannelMuted(String channelId, String? guildId) =>
+      _mutedIds.contains(channelId) ||
+      (guildId != null && _mutedIds.contains(guildId));
+
+  void toggleMute(String id) {
+    if (!_mutedIds.remove(id)) _mutedIds.add(id);
+    final botId = _activeAccount?.id;
+    if (botId != null) {
+      _prefs?.setStringList('$_kMutedPrefix$botId', _mutedIds.toList());
+    }
+    notifyListeners();
+  }
+
+  void markChannelRead(String channelId) => _markChannelRead(channelId);
+
+  void markGuildRead(String guildId) {
+    final g = _guilds[guildId];
+    if (g == null) return;
+    for (final ch in g.channels) {
+      _markChannelRead(ch.id);
+    }
+    notifyListeners();
+  }
+
   void _loadPersistedReadState(String botId) {
     _lastReadMessageId.clear();
     _unreadChannelIds.clear();
+    _mutedIds
+      ..clear()
+      ..addAll(_prefs?.getStringList('$_kMutedPrefix$botId') ?? const []);
     final raw = _prefs?.getString('$_kReadStatePrefix$botId');
     if (raw == null) return;
     try {
@@ -1128,7 +1159,18 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
+  // Last-read message id captured when a channel with unread messages is
+  // opened: the official red "NEW" divider sits above the next message.
+  final Map<String, String> _unreadAnchor = <String, String>{};
+  String? unreadAnchor(String channelId) => _unreadAnchor[channelId];
+
   Future<void> selectChannel(String channelId, {bool markRead = true}) async {
+    final lastRead = _lastReadMessageId[channelId];
+    if (_unreadChannelIds.contains(channelId) && lastRead != null) {
+      _unreadAnchor[channelId] = lastRead;
+    } else if (channelId != _selectedChannelId) {
+      _unreadAnchor.remove(channelId);
+    }
     _selectedChannelId = channelId;
     typingBannerNotifier.value = null;
     if (markRead) {
@@ -2407,7 +2449,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               typingBannerNotifier.value = null;
             }
           } else {
-            _unreadChannelIds.add(msg.channelId);
+            if (!isChannelMuted(msg.channelId, msg.guildId)) {
+              _unreadChannelIds.add(msg.channelId);
+            }
             if (botId != null && _messageMentionsBot(msg, botId)) {
               _mentionCounts[msg.channelId] = mentionCount(msg.channelId) + 1;
               if (!msg.isSilentMessage) inAppNotificationNotifier.value = msg;
