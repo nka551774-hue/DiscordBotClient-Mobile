@@ -487,6 +487,15 @@ class DiscordMember {
   DateTime? get joinedAtDate =>
       joinedAt != null ? DateTime.tryParse(joinedAt!)?.toLocal() : null;
 
+  /// Per-server profile banner (server profile), if the member set one.
+  String? guildBannerUrl(String? guildId, {bool allowAnimated = false}) {
+    if (guildId == null || guildBanner == null || guildBanner!.isEmpty) {
+      return null;
+    }
+    final ext = (guildBanner!.startsWith('a_') && allowAnimated) ? 'gif' : 'webp';
+    return 'https://cdn.discordapp.com/guilds/$guildId/users/${user.id}/banners/$guildBanner.$ext?size=1024';
+  }
+
   String effectiveAvatarUrl(String? guildId, {int size = 128}) {
     if (guildId != null && guildAvatar != null && guildAvatar!.isNotEmpty) {
       return 'https://cdn.discordapp.com/guilds/$guildId/users/${user.id}/avatars/$guildAvatar.webp?size=$size';
@@ -1331,6 +1340,11 @@ class DiscordEmbed {
   final String? thumbnailUrl;
   final String? timestamp;
   final List<DiscordEmbedField> fields;
+  /// rich / image / gifv / video / article / link
+  final String type;
+  final String? providerName;
+  final String? authorUrl;
+  final String? videoUrl;
 
   const DiscordEmbed({
     this.title,
@@ -1345,7 +1359,17 @@ class DiscordEmbed {
     this.thumbnailUrl,
     this.timestamp,
     this.fields = const [],
+    this.type = 'rich',
+    this.providerName,
+    this.authorUrl,
+    this.videoUrl,
   });
+
+  /// Media-only embeds (GIF / image links) render without a card, like official.
+  bool get isMediaOnly =>
+      (type == 'gifv' || type == 'image') &&
+      (title == null || title!.isEmpty) &&
+      (description == null || description!.isEmpty);
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{};
@@ -1388,12 +1412,18 @@ class DiscordEmbed {
     final image = json['image'] as Map<String, dynamic>?;
     final thumb = json['thumbnail'] as Map<String, dynamic>?;
     final fieldsRaw = json['fields'] as List<dynamic>? ?? const [];
+    final provider = json['provider'] as Map<String, dynamic>?;
+    final video = json['video'] as Map<String, dynamic>?;
 
     return DiscordEmbed(
+      type: json['type'] as String? ?? 'rich',
+      providerName: provider?['name'] as String?,
+      authorUrl: author?['url'] as String?,
+      videoUrl: video?['proxy_url'] as String? ?? video?['url'] as String?,
       title: json['title'] as String?,
       description: json['description'] as String?,
       url: json['url'] as String?,
-      color: json['color'] as int?,
+      color: (json['color'] as num?)?.toInt(),
       authorName: author?['name'] as String?,
       authorIconUrl: author?['proxy_icon_url'] as String? ??
           author?['icon_url'] as String?,

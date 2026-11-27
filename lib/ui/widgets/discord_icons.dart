@@ -145,6 +145,50 @@ class _DbcEmbedIconPainter extends CustomPainter {
 /// - idle: yellow crescent moon
 /// - dnd: red circle with dark minus bar
 /// - invisible: dark circle with thick #80848E hollow grey ring (matching screenshots!)
+/// Profile banner with a PNG retry (some clients fail on webp banners) and
+/// the accent colour behind it while loading / on failure.
+class DiscordBannerImage extends StatelessWidget {
+  final String? url;
+  final Color color;
+  final double height;
+
+  const DiscordBannerImage({
+    super.key,
+    required this.url,
+    required this.color,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    return Container(
+      height: height,
+      width: double.infinity,
+      color: color,
+      child: u == null
+          ? null
+          : Image.network(
+              u,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: height,
+              errorBuilder: (_, __, ___) {
+                final png = u.replaceFirst(RegExp(r'\.(webp|gif)(?=\?|$)'), '.png');
+                if (png == u) return const SizedBox.shrink();
+                return Image.network(
+                  png,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: height,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                );
+              },
+            ),
+    );
+  }
+}
+
 class DiscordStatusBadge extends StatelessWidget {
   final String status;
   final double size;

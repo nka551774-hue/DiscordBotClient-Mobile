@@ -6,6 +6,7 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
+import 'media_viewer.dart';
 import 'member_moderation.dart';
 import 'user_profile_sheet.dart';
 import 'vencord_sheets.dart';
@@ -523,11 +524,13 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       ),
       itemCount: imgs.length,
       itemBuilder: (_, i) => GestureDetector(
-        onTap: () => showVencordImageViewerModal(
+        onTap: () => showDiscordMediaViewer(
           context,
-          palette: p,
-          title: imgs[i].filename,
-          imageUrl: imgs[i].previewUrl(maxWidth: 1024),
+          items: [
+            for (final a in imgs)
+              MediaViewerItem(a.previewUrl(maxWidth: 2048), originalUrl: a.url),
+          ],
+          initialIndex: i,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),

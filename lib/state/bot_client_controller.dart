@@ -2305,6 +2305,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
                         .toList()
                     : existing.embeds,
                 editHistory: nextHistory,
+                // keeps edited components (CV2 / buttons) in sync for rendering
+                rawJson: {...?existing.rawJson, ...data},
               );
               _insertOrUpdateMessage(chId, updated, isNew: false);
             }

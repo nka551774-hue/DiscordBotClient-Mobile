@@ -66,7 +66,7 @@ class _YouProfileModalSheet extends StatelessWidget {
         final bannerColor = acc.accentColor != null
             ? Color(0xFF000000 | acc.accentColor!)
             : _deriveFallbackBannerColor(acc.id);
-        final bannerUrl = acc.bannerUrl(size: 600);
+        final bannerUrl = acc.bannerUrl(size: 1024);
         final badges = acc.realBadges;
 
         final created = snowflakeCreatedAt(acc.id);
@@ -104,17 +104,14 @@ class _YouProfileModalSheet extends StatelessWidget {
                                 imageUrl: bannerUrl,
                               )
                           : null,
-                      child: Container(
-                        height: 132,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
+                      // Re-fetch /users/{id}: the stored login snapshot may predate a banner change.
+                      child: FutureBuilder<(DiscordUser?, DiscordMember?)>(
+                        future: controller.fetchRichUserProfile(acc.id),
+                        builder: (_, snap) => DiscordBannerImage(
+                          url: snap.data?.$1?.bannerUrl(size: 1024) ??
+                              bannerUrl,
                           color: bannerColor,
-                          image: bannerUrl != null
-                              ? DecorationImage(
-                                  image: NetworkImage(bannerUrl),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
+                          height: 132,
                         ),
                       ),
                     ),

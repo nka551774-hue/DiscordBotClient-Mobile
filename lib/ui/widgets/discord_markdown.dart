@@ -237,7 +237,7 @@ class _RichParagraphState extends State<_RichParagraph> {
   final Set<int> _revealedSpoilers = <int>{};
 
   static final RegExp _tokenRegex = RegExp(
-    r'(\|\|.+?\|\|)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\))|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
+    r'(\|\|.+?\|\|)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\))|(\[[^\[\]\n]+\]\(<?https?://[^\s)>]+>?\))|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
   );
 
   static final RegExp _fakeNitroHyperlinkRegex = RegExp(
@@ -248,9 +248,53 @@ class _RichParagraphState extends State<_RichParagraph> {
     r'^https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/(\d+)\.(webp|png|gif)(?:\?[^\s<>]*)?$',
   );
 
-  static final RegExp _jumboOnlyRegex = RegExp(
-    r'^(?:\s*(?:<a?:[^:>\s]+:\d+>|\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\)|https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)(?:\?[^\s<>]*)?)\s*){1,27}(?:\*\(已編輯\)\*|\*\(已刪除\)\*)?\s*$',
+  static final RegExp _maskedLinkRegex =
+      RegExp(r'^\[([^\[\]\n]+)\]\(<?(https?://[^\s)>]+)>?\)$');
+
+  /// One rendered emoji (incl. ZWJ sequences, skin tones, flags, keycaps).
+  static final RegExp _unicodeEmojiRegex = RegExp(
+    r'(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]️?⃣)(?:️|‍|\p{Emoji_Modifier}|\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣)*',
+    unicode: true,
   );
+
+  static final RegExp _customEmojiTokenRegex = RegExp(
+    r'<a?:[^:>\s]+:\d+>|\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\)|https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)(?:\?[^\s<>]*)?',
+  );
+
+  /// Official rule: a message made only of (≤ 30) emojis renders them jumbo.
+  static bool _isJumboOnly(String text) {
+    final body = text
+        .replaceAll('*(已編輯)*', '')
+        .replaceAll('*(已刪除)*', '');
+    var count = _customEmojiTokenRegex.allMatches(body).length;
+    final noCustom = body.replaceAll(_customEmojiTokenRegex, '');
+    count += _unicodeEmojiRegex.allMatches(noCustom).length;
+    if (count == 0 || count > 30) return false;
+    return noCustom.replaceAll(_unicodeEmojiRegex, '').trim().isEmpty;
+  }
+
+  /// Plain text with unicode emoji drawn bigger, like the official client.
+  void _addPlain(
+    List<InlineSpan> spans,
+    String text,
+    TextStyle style,
+    double emojiFontSize,
+  ) {
+    var i = 0;
+    for (final m in _unicodeEmojiRegex.allMatches(text)) {
+      if (m.start > i) {
+        spans.add(TextSpan(text: text.substring(i, m.start), style: style));
+      }
+      spans.add(TextSpan(
+        text: m.group(0),
+        style: style.copyWith(fontSize: emojiFontSize, height: 1.15),
+      ));
+      i = m.end;
+    }
+    if (i < text.length) {
+      spans.add(TextSpan(text: text.substring(i), style: style));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -259,9 +303,10 @@ class _RichParagraphState extends State<_RichParagraph> {
       fontSize: widget.fontSize,
       height: 1.36,
     );
-    final isJumbo = _jumboOnlyRegex.hasMatch(widget.text);
-    final emojiDisplaySize = isJumbo ? 42.0 : 21.0;
+    final isJumbo = _isJumboOnly(widget.text);
+    final emojiDisplaySize = isJumbo ? 48.0 : 22.0;
     final emojiFetchSize = isJumbo ? 96 : 48;
+    final unicodeEmojiFont = isJumbo ? 42.0 : widget.fontSize * 1.3;
 
     final lines = widget.text.split('\n');
     final spans = <InlineSpan>[];
@@ -289,6 +334,24 @@ class _RichParagraphState extends State<_RichParagraph> {
           fontSize: widget.fontSize + 6,
           fontWeight: FontWeight.w800,
         );
+      } else if (line.startsWith('-# ')) {
+        line = line.substring(3);
+        lineStyle = baseStyle.copyWith(
+          fontSize: widget.fontSize - 2.5,
+          color: widget.palette.textMuted,
+        );
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        spans.add(TextSpan(text: '  •  ', style: lineStyle));
+        line = line.substring(2);
+      } else if (line.startsWith('>>> ')) {
+        spans.add(TextSpan(
+          text: '▎ ',
+          style: lineStyle.copyWith(
+            color: widget.palette.textMuted,
+            fontWeight: FontWeight.w900,
+          ),
+        ));
+        line = line.substring(4);
       } else if (line.startsWith('> ')) {
         spans.add(TextSpan(
           text: '▎ ',
@@ -304,10 +367,8 @@ class _RichParagraphState extends State<_RichParagraph> {
       int idx = 0;
       for (final match in _tokenRegex.allMatches(line)) {
         if (match.start > idx) {
-          spans.add(TextSpan(
-            text: line.substring(idx, match.start),
-            style: lineStyle,
-          ));
+          _addPlain(spans, line.substring(idx, match.start), lineStyle,
+              unicodeEmojiFont);
         }
 
         final token = match.group(0)!;
@@ -340,6 +401,16 @@ class _RichParagraphState extends State<_RichParagraph> {
               backgroundColor: widget.palette.oled
                   ? const Color(0xFF161922)
                   : const Color(0xFF1E1F22),
+            ),
+          ));
+        } else if (token.length > 6 &&
+            token.startsWith('***') &&
+            token.endsWith('***')) {
+          spans.add(TextSpan(
+            text: token.substring(3, token.length - 3),
+            style: lineStyle.copyWith(
+              fontWeight: FontWeight.w700,
+              fontStyle: FontStyle.italic,
             ),
           ));
         } else if (token.startsWith('**') && token.endsWith('**')) {
@@ -434,6 +505,22 @@ class _RichParagraphState extends State<_RichParagraph> {
                 },
             ));
           }
+        } else if (token.startsWith('[') &&
+            _maskedLinkRegex.hasMatch(token)) {
+          final ml = _maskedLinkRegex.firstMatch(token)!;
+          final label = ml.group(1)!;
+          final href = ml.group(2)!;
+          spans.add(TextSpan(
+            text: label,
+            style: lineStyle.copyWith(color: const Color(0xFF00A8FC)),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () {
+                final uri = Uri.tryParse(href);
+                if (uri != null) {
+                  launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+          ));
         } else if (token.startsWith('<@&')) {
           final roleId = token.substring(3, token.length - 1);
           final role = widget.guild?.roles[roleId];
@@ -558,7 +645,7 @@ class _RichParagraphState extends State<_RichParagraph> {
       }
 
       if (idx < line.length) {
-        spans.add(TextSpan(text: line.substring(idx), style: lineStyle));
+        _addPlain(spans, line.substring(idx), lineStyle, unicodeEmojiFont);
       }
       if (i < lines.length - 1) {
         spans.add(const TextSpan(text: '\n'));

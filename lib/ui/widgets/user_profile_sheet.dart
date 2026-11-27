@@ -267,10 +267,10 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
 
     final allowAnim = !eco || ctrl.vencord.isPluginEnabled('AlwaysAnimate');
     final viewIcons = ctrl.vencord.isPluginEnabled('ViewIcons');
-    final bannerUrl = isSelf
-        ? (acc.bannerUrl(size: 600) ??
-            _user.bannerUrl(size: 600, allowAnimated: allowAnim))
-        : _user.bannerUrl(size: 600, allowAnimated: allowAnim);
+    final bannerUrl =
+        _member?.guildBannerUrl(widget.guildId, allowAnimated: allowAnim) ??
+            _user.bannerUrl(size: 1024, allowAnimated: allowAnim) ??
+            (isSelf ? acc.bannerUrl(size: 1024) : null);
     final accentInt = isSelf
         ? (acc.accentColor ?? _user.accentColor)
         : _user.accentColor;
@@ -343,18 +343,10 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                                 imageUrl: bannerUrl,
                               )
                           : null,
-                      child: Container(
+                      child: DiscordBannerImage(
+                        url: bannerUrl,
+                        color: bannerColor,
                         height: 124,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: bannerColor,
-                          image: bannerUrl != null
-                              ? DecorationImage(
-                                  image: NetworkImage(bannerUrl),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                        ),
                       ),
                     ),
                     // Top-left Close Button

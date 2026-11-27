@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +8,8 @@ import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
 import 'discord_markdown.dart';
+import 'media_viewer.dart';
+import 'message_components.dart';
 import 'vencord_sheets.dart';
 
 class MessageTile extends StatefulWidget {
@@ -75,6 +78,60 @@ class _MessageTileState extends State<MessageTile> {
               )
             : null);
     widget.onOpenUserProfile(msg.author, member: member);
+  }
+
+  void _openMedia(List<MediaViewerItem> items, int index) {
+    showDiscordMediaViewer(
+      context,
+      items: items,
+      initialIndex: index,
+      authorName: widget.message.authorDisplayName(widget.guild),
+      authorAvatarUrl: widget.message.author.avatarUrl(size: 64),
+      timestamp: widget.message.timestamp,
+    );
+  }
+
+  // Swipe-to-reply via raw pointer events: unlike a drag recognizer this never
+  // wins the gesture arena, so right-swipes still reach the page-back gesture.
+  Offset? _swipeStart;
+  bool _swipeActive = false;
+
+  void _onSwipeMove(PointerMoveEvent e) {
+    final start = _swipeStart;
+    if (start == null) return;
+    final d = e.position - start;
+    if (!_swipeActive) {
+      if (d.dx < -14 && d.dx.abs() > d.dy.abs() * 1.6) {
+        _swipeActive = true;
+      } else if (d.dx > 8 || d.dy.abs() > 14) {
+        _swipeStart = null; // not a left swipe: let other gestures have it
+        return;
+      } else {
+        return;
+      }
+    }
+    final next = (d.dx * 0.72).clamp(-62.0, 0.0);
+    if (next <= -46 && !_triggeredHaptic) {
+      _triggeredHaptic = true;
+      HapticFeedback.lightImpact();
+    } else if (next > -40) {
+      _triggeredHaptic = false;
+    }
+    setState(() => _dragOffset = next);
+  }
+
+  void _onSwipeEnd() {
+    if (_swipeActive && _dragOffset <= -46) {
+      widget.onReply(widget.message);
+    }
+    _swipeStart = null;
+    _swipeActive = false;
+    if (_dragOffset != 0) {
+      setState(() {
+        _dragOffset = 0;
+        _triggeredHaptic = false;
+      });
+    }
   }
 
   String _formatDiscordTime(DateTime dt) {
@@ -488,41 +545,17 @@ class _MessageTileState extends State<MessageTile> {
               ),
             ),
 
-          GestureDetector(
+          Listener(
+            onPointerDown: (e) {
+              _swipeStart = e.position;
+              _swipeActive = false;
+            },
+            onPointerMove: _onSwipeMove,
+            onPointerUp: (_) => _onSwipeEnd(),
+            onPointerCancel: (_) => _onSwipeEnd(),
+            child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onLongPress: () => _showDiscordMessageSheet(context),
-            onHorizontalDragUpdate: (details) {
-              if (details.delta.dx < 0 || _dragOffset < 0) {
-                final next = (_dragOffset + details.delta.dx * 0.72)
-                    .clamp(-62.0, 0.0);
-                if (next <= -46 && !_triggeredHaptic) {
-                  _triggeredHaptic = true;
-                  HapticFeedback.lightImpact();
-                } else if (next > -40) {
-                  _triggeredHaptic = false;
-                }
-                setState(() => _dragOffset = next);
-              }
-            },
-            onHorizontalDragCancel: () {
-              if (_dragOffset != 0) {
-                setState(() {
-                  _dragOffset = 0;
-                  _triggeredHaptic = false;
-                });
-              }
-            },
-            onHorizontalDragEnd: (_) {
-              if (_dragOffset <= -46) {
-                widget.onReply(message);
-              }
-              if (_dragOffset != 0) {
-                setState(() {
-                  _dragOffset = 0;
-                  _triggeredHaptic = false;
-                });
-              }
-            },
             child: Stack(
               alignment: Alignment.centerRight,
               children: [
@@ -802,7 +835,11 @@ class _MessageTileState extends State<MessageTile> {
                                       );
                                     }),
 
-                                  if (message.content.isNotEmpty)
+                                  if (message.content.isNotEmpty &&
+                                      !message.embeds.any((e) =>
+                                          e.isMediaOnly &&
+                                          e.url != null &&
+                                          e.url == message.content.trim()))
                                     Container(
                                       padding: deleteOverlay
                                           ? const EdgeInsets.symmetric(
@@ -889,7 +926,9 @@ class _MessageTileState extends State<MessageTile> {
                                       ),
                                     ),
 
-                                  if (message.attachments.isNotEmpty)
+                                  // CV2 messages place their attachments inside components.
+                                  if (message.attachments.isNotEmpty &&
+                                      !message.isComponentsV2)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 6),
                                       child: Column(
@@ -900,6 +939,23 @@ class _MessageTileState extends State<MessageTile> {
                                                   attachment: att,
                                                   palette: palette,
                                                   ecoMode: widget.ecoMode,
+                                                  onOpen: () {
+                                                    final imgs = message
+                                                        .attachments
+                                                        .where((a) => a.isImage)
+                                                        .toList();
+                                                    _openMedia(
+                                                      [
+                                                        for (final a in imgs)
+                                                          MediaViewerItem(
+                                                            a.previewUrl(
+                                                                maxWidth: 2048),
+                                                            originalUrl: a.url,
+                                                          ),
+                                                      ],
+                                                      imgs.indexOf(att),
+                                                    );
+                                                  },
                                                 ))
                                             .toList(),
                                       ),
@@ -934,52 +990,31 @@ class _MessageTileState extends State<MessageTile> {
                                                   guild: widget.guild,
                                                   ecoMode: widget.ecoMode,
                                                   alwaysAnimate: alwaysAnim,
+                                                  onOpenImage: (url) =>
+                                                      _openMedia(
+                                                    [MediaViewerItem(url)],
+                                                    0,
+                                                  ),
                                                 ))
                                             .toList(),
                                       ),
                                     ),
 
-                                  if (message.components.isNotEmpty)
+                                  if (message.rawJson?['components']
+                                          is List &&
+                                      (message.rawJson!['components'] as List)
+                                          .isNotEmpty)
                                     Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children:
-                                            message.components.map((btn) {
-                                          return FilledButton(
-                                            style: FilledButton.styleFrom(
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              backgroundColor: btn.style == 1
-                                                  ? DiscordPalette.blurple
-                                                  : const Color(0xFF4E5058),
-                                              foregroundColor: Colors.white,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                            ),
-                                            onPressed: btn.url != null
-                                                ? () {
-                                                    final uri = Uri.tryParse(
-                                                        btn.url!);
-                                                    if (uri != null) {
-                                                      launchUrl(
-                                                        uri,
-                                                        mode: LaunchMode
-                                                            .externalApplication,
-                                                      );
-                                                    }
-                                                  }
-                                                : null,
-                                            child: Text(
-                                              btn.label ?? 'Button',
-                                              style: const TextStyle(
-                                                  fontSize: 13),
-                                            ),
-                                          );
-                                        }).toList(),
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: DiscordComponentsView(
+                                        components: message
+                                            .rawJson!['components'] as List,
+                                        attachments: message.attachments,
+                                        palette: palette,
+                                        guild: widget.guild,
+                                        ecoMode: widget.ecoMode,
+                                        alwaysAnimate: alwaysAnim,
+                                        onOpenMedia: _openMedia,
                                       ),
                                     ),
 
@@ -1087,6 +1122,7 @@ class _MessageTileState extends State<MessageTile> {
               ],
             ),
           ),
+          ),
         ],
       ),
     );
@@ -1097,11 +1133,13 @@ class _AttachmentView extends StatelessWidget {
   final DiscordAttachment attachment;
   final DiscordPalette palette;
   final bool ecoMode;
+  final VoidCallback onOpen;
 
   const _AttachmentView({
     required this.attachment,
     required this.palette,
     required this.ecoMode,
+    required this.onOpen,
   });
 
   @override
@@ -1111,32 +1149,7 @@ class _AttachmentView extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: GestureDetector(
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              builder: (ctx) => Dialog.fullscreen(
-                backgroundColor: Colors.black,
-                child: Stack(
-                  children: [
-                    Center(
-                      child: InteractiveViewer(
-                        child: Image.network(attachment.url),
-                      ),
-                    ),
-                    Positioned(
-                      top: 40,
-                      right: 16,
-                      child: IconButton(
-                        icon: const Icon(Icons.close,
-                            color: Colors.white, size: 28),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+          onTap: onOpen,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: ConstrainedBox(
@@ -1214,6 +1227,7 @@ class _EmbedCard extends StatelessWidget {
   final DiscordGuild? guild;
   final bool ecoMode;
   final bool alwaysAnimate;
+  final void Function(String url) onOpenImage;
 
   const _EmbedCard({
     required this.embed,
@@ -1221,25 +1235,159 @@ class _EmbedCard extends StatelessWidget {
     this.guild,
     required this.ecoMode,
     this.alwaysAnimate = false,
+    required this.onOpenImage,
   });
+
+  void _open(String? url) {
+    final uri = url != null ? Uri.tryParse(url) : null;
+    if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  String? _footerTime() {
+    final ts = embed.timestamp;
+    if (ts == null) return null;
+    final t = DateTime.tryParse(ts)?.toLocal();
+    if (t == null) return null;
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    if (t.year == now.year && t.month == now.month && t.day == now.day) {
+      return '今天 $hh:$mm';
+    }
+    return '${t.year}/${t.month}/${t.day} $hh:$mm';
+  }
+
+  Widget _image(String url, {double maxHeight = 300, bool gif = false}) {
+    return GestureDetector(
+      onTap: () => onOpenImage(url),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight, maxWidth: 400),
+          child: Stack(
+            children: [
+              Image.network(
+                url,
+                cacheWidth: ecoMode ? 480 : 800,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+              if (gif)
+                Positioned(
+                  left: 6,
+                  top: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xAA000000),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'GIF',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Official field grid: inline fields share a row (max 3), others full width.
+  Widget _fields() {
+    final rows = <List<DiscordEmbedField>>[];
+    for (final f in embed.fields) {
+      if (f.inline && rows.isNotEmpty) {
+        final last = rows.last;
+        if (last.length < 3 && last.every((x) => x.inline)) {
+          last.add(f);
+          continue;
+        }
+      }
+      rows.add([f]);
+    }
+    Widget field(DiscordEmbedField f) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DiscordMarkdownView(
+              text: '**${f.name}**',
+              palette: palette,
+              guild: guild,
+              ecoMode: ecoMode,
+              fontSize: 13.5,
+            ),
+            const SizedBox(height: 2),
+            DiscordMarkdownView(
+              text: f.value,
+              palette: palette,
+              guild: guild,
+              ecoMode: ecoMode,
+              alwaysAnimate: alwaysAnimate,
+              fontSize: 13.5,
+            ),
+          ],
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: row.length == 1
+                ? field(row.first)
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < row.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 10),
+                        Expanded(child: field(row[i])),
+                      ],
+                    ],
+                  ),
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    // GIF / image link embeds: just the media, no card (official behaviour).
+    if (embed.isMediaOnly) {
+      final url = embed.thumbnailUrl ?? embed.imageUrl;
+      if (url == null || url.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: _image(url, gif: embed.type == 'gifv'),
+      );
+    }
+
     final accent = embed.color != null
         ? Color(0xFF000000 | embed.color!)
         : const Color(0xFF1E1F22);
+    final footerTime = _footerTime();
+    final footerParts = [
+      if (embed.footerText != null && embed.footerText!.isNotEmpty)
+        embed.footerText!,
+      if (footerTime != null) footerTime,
+    ];
+    final bigThumb = embed.type == 'video' || embed.type == 'article';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      constraints: const BoxConstraints(maxWidth: 430),
+      constraints: const BoxConstraints(maxWidth: 432),
       decoration: BoxDecoration(
         color: palette.cardBg,
-        borderRadius: BorderRadius.circular(4),
-        border: Border(
-          left: BorderSide(color: accent, width: 4),
-        ),
+        borderRadius: BorderRadius.circular(6),
+        border: Border(left: BorderSide(color: accent, width: 4)),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1250,63 +1398,76 @@ class _EmbedCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (embed.providerName != null &&
+                        embed.providerName!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          embed.providerName!,
+                          style:
+                              TextStyle(color: palette.textMuted, fontSize: 12),
+                        ),
+                      ),
                     if (embed.authorName != null &&
                         embed.authorName!.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            if (embed.authorIconUrl != null &&
-                                embed.authorIconUrl!.isNotEmpty) ...[
-                              ClipOval(
-                                child: Image.network(
-                                  embed.authorIconUrl!,
-                                  width: 20,
-                                  height: 20,
-                                  cacheWidth: 40,
-                                  errorBuilder: (_, __, ___) =>
-                                      const SizedBox.shrink(),
+                        child: GestureDetector(
+                          onTap: embed.authorUrl != null
+                              ? () => _open(embed.authorUrl)
+                              : null,
+                          child: Row(
+                            children: [
+                              if (embed.authorIconUrl != null &&
+                                  embed.authorIconUrl!.isNotEmpty) ...[
+                                ClipOval(
+                                  child: Image.network(
+                                    embed.authorIconUrl!,
+                                    width: 22,
+                                    height: 22,
+                                    cacheWidth: 44,
+                                    errorBuilder: (_, __, ___) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              Flexible(
+                                child: Text(
+                                  embed.authorName!,
+                                  style: TextStyle(
+                                    color: palette.textPrimary,
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
                             ],
-                            Flexible(
-                              child: Text(
-                                embed.authorName!,
-                                style: TextStyle(
-                                  color: palette.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     if (embed.title != null && embed.title!.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: GestureDetector(
-                          onTap: embed.url != null
-                              ? () {
-                                  final uri = Uri.tryParse(embed.url!);
-                                  if (uri != null) {
-                                    launchUrl(uri,
-                                        mode: LaunchMode.externalApplication);
-                                  }
-                                }
-                              : null,
-                          child: Text(
-                            embed.title!,
-                            style: TextStyle(
-                              color: embed.url != null
-                                  ? const Color(0xFF00A8FC)
-                                  : palette.textPrimary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14.5,
-                            ),
-                          ),
-                        ),
+                        child: embed.url != null
+                            ? GestureDetector(
+                                onTap: () => _open(embed.url),
+                                child: Text(
+                                  embed.title!,
+                                  style: const TextStyle(
+                                    color: Color(0xFF00A8FC),
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              )
+                            : DiscordMarkdownView(
+                                text: '**${embed.title!}**',
+                                palette: palette,
+                                guild: guild,
+                                ecoMode: ecoMode,
+                                fontSize: 15,
+                              ),
                       ),
                     if (embed.description != null &&
                         embed.description!.isNotEmpty)
@@ -1316,79 +1477,47 @@ class _EmbedCard extends StatelessWidget {
                         guild: guild,
                         ecoMode: ecoMode,
                         alwaysAnimate: alwaysAnimate,
-                        fontSize: 13.5,
+                        fontSize: 14,
                       ),
                   ],
                 ),
               ),
-              if (embed.thumbnailUrl != null && embed.thumbnailUrl!.isNotEmpty)
+              if (!bigThumb &&
+                  embed.thumbnailUrl != null &&
+                  embed.thumbnailUrl!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(left: 12),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: Image.network(
-                      embed.thumbnailUrl!,
-                      width: 68,
-                      height: 68,
-                      cacheWidth: 136,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  child: GestureDetector(
+                    onTap: () => onOpenImage(embed.thumbnailUrl!),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.network(
+                        embed.thumbnailUrl!,
+                        width: 80,
+                        height: 80,
+                        cacheWidth: 160,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
                     ),
                   ),
                 ),
             ],
           ),
-          if (embed.fields.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: embed.fields.map((f) {
-                  return SizedBox(
-                    width: f.inline ? 135 : double.infinity,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          f.name,
-                          style: TextStyle(
-                            color: palette.textPrimary,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        DiscordMarkdownView(
-                          text: f.value,
-                          palette: palette,
-                          guild: guild,
-                          ecoMode: ecoMode,
-                          fontSize: 12.5,
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
+          if (embed.fields.isNotEmpty) _fields(),
           if (embed.imageUrl != null && embed.imageUrl!.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  child: Image.network(
-                    embed.imageUrl!,
-                    cacheWidth: ecoMode ? 360 : 600,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-              ),
+              padding: const EdgeInsets.only(top: 10),
+              child: _image(embed.imageUrl!),
+            )
+          else if (bigThumb &&
+              embed.thumbnailUrl != null &&
+              embed.thumbnailUrl!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _image(embed.thumbnailUrl!),
             ),
-          if (embed.footerText != null && embed.footerText!.isNotEmpty)
+          if (footerParts.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Row(
@@ -1398,9 +1527,9 @@ class _EmbedCard extends StatelessWidget {
                     ClipOval(
                       child: Image.network(
                         embed.footerIconUrl!,
-                        width: 16,
-                        height: 16,
-                        cacheWidth: 32,
+                        width: 18,
+                        height: 18,
+                        cacheWidth: 36,
                         errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                       ),
                     ),
@@ -1408,8 +1537,8 @@ class _EmbedCard extends StatelessWidget {
                   ],
                   Flexible(
                     child: Text(
-                      embed.footerText!,
-                      style: TextStyle(color: palette.textMuted, fontSize: 11.5),
+                      footerParts.join(' • '),
+                      style: TextStyle(color: palette.textMuted, fontSize: 12),
                     ),
                   ),
                 ],
