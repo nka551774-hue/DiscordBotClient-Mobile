@@ -620,6 +620,7 @@ class DiscordPermissions {
   static final BigInt manageWebhooks = BigInt.one << 29;
   static final BigInt sendMessagesInThreads = BigInt.one << 38;
   static final BigInt useSoundboard = BigInt.one << 42;
+  static final BigInt moderateMembers = BigInt.one << 40;
   static final BigInt all = (BigInt.one << 53) - BigInt.one;
 
   static final List<(String name, BigInt bit)> namedFlags = [
@@ -694,6 +695,21 @@ class DiscordPermissions {
       }
     }
     return perms;
+  }
+
+  /// Guild-wide permissions (what Discord checks for kick / ban / timeout),
+  /// without channel overwrites.
+  static BigInt computeGuildPermissions({
+    required DiscordGuild guild,
+    required String userId,
+    required List<String> roleIds,
+  }) {
+    if (guild.ownerId == userId) return all;
+    var perms = guild.roles[guild.id]?.permissions ?? BigInt.zero;
+    for (final id in roleIds) {
+      perms |= guild.roles[id]?.permissions ?? BigInt.zero;
+    }
+    return has(perms, administrator) ? all : perms;
   }
 
   static bool has(BigInt perms, BigInt flag) => (perms & flag) == flag;

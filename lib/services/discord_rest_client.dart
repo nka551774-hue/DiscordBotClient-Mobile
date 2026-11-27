@@ -589,6 +589,21 @@ class DiscordRestClient {
     );
   }
 
+  /// Timeout (禁言) a member; `until == null` removes the timeout.
+  Future<void> timeoutMember(
+    String guildId,
+    String userId, {
+    DateTime? until,
+    String? reason,
+  }) async {
+    await _request(
+      'PATCH',
+      '/guilds/$guildId/members/$userId',
+      body: {'communication_disabled_until': until?.toUtc().toIso8601String()},
+      auditReason: reason,
+    );
+  }
+
   Future<void> banMember(
     String guildId,
     String userId, {

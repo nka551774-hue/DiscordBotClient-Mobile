@@ -5,6 +5,7 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
+import 'member_moderation.dart';
 import 'settings_sheet.dart';
 import 'vencord_sheets.dart';
 
@@ -150,8 +151,6 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
     BuildContext context, {
     required DiscordPalette p,
     required DiscordGuild? guild,
-    required bool canKick,
-    required bool canBan,
   }) {
     showModalBottomSheet<void>(
       context: context,
@@ -232,68 +231,19 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                     },
                   ),
                 ],
-                if (guild != null && canKick) ...[
-                  Divider(height: 1, color: p.border),
-                  ListTile(
-                    leading: const Icon(Icons.person_remove_outlined,
-                        color: DiscordPalette.danger),
-                    title: const Text(
-                      '踢出伺服器',
-                      style: TextStyle(color: DiscordPalette.danger),
-                    ),
-                    onTap: () async {
-                      Navigator.of(menuCtx).pop();
-                      try {
-                        await widget.controller.rest
-                            ?.kickMember(guild.id, _user.id);
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('已將 ${_user.displayName} 踢出伺服器')),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$e')),
-                          );
-                        }
-                      }
+                if (guild != null)
+                  ...memberModerationTiles(
+                    context: context,
+                    menuCtx: menuCtx,
+                    controller: widget.controller,
+                    guild: guild,
+                    user: _user,
+                    member: _member,
+                    p: p,
+                    onRemoved: () {
+                      if (context.mounted) Navigator.of(context).pop();
                     },
                   ),
-                ],
-                if (guild != null && canBan) ...[
-                  Divider(height: 1, color: p.border),
-                  ListTile(
-                    leading: const Icon(Icons.gavel_rounded,
-                        color: DiscordPalette.danger),
-                    title: const Text(
-                      '封鎖成員',
-                      style: TextStyle(color: DiscordPalette.danger),
-                    ),
-                    onTap: () async {
-                      Navigator.of(menuCtx).pop();
-                      try {
-                        await widget.controller.rest
-                            ?.banMember(guild.id, _user.id);
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text('已封鎖 ${_user.displayName}')),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('$e')),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ],
               ],
             ),
           ),
@@ -314,16 +264,6 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
     final guild =
         widget.guildId != null ? ctrl.findGuildById(widget.guildId) : null;
 
-    final perms = ctrl.currentChannelPermissions();
-    final isGuildOwner = guild != null && guild.ownerId == _user.id;
-    final canKick = guild != null &&
-        !isSelf &&
-        !isGuildOwner &&
-        DiscordPermissions.has(perms, DiscordPermissions.kickMembers);
-    final canBan = guild != null &&
-        !isSelf &&
-        !isGuildOwner &&
-        DiscordPermissions.has(perms, DiscordPermissions.banMembers);
 
     final allowAnim = !eco || ctrl.vencord.isPluginEnabled('AlwaysAnimate');
     final viewIcons = ctrl.vencord.isPluginEnabled('ViewIcons');
@@ -436,8 +376,6 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                           context,
                           p: p,
                           guild: guild,
-                          canKick: canKick,
-                          canBan: canBan,
                         ),
                       ),
                     ),

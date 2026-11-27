@@ -6,6 +6,7 @@ import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 import '../theme/app_theme.dart';
 import 'discord_icons.dart';
+import 'member_moderation.dart';
 import 'user_profile_sheet.dart';
 import 'vencord_sheets.dart';
 
@@ -889,6 +890,30 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       opacity: isOffline && !isSelf ? 0.4 : 1.0,
       child: InkWell(
       borderRadius: BorderRadius.circular(8),
+      onLongPress: () {
+        final g = guildId != null ? ctrl.findGuildById(guildId) : null;
+        if (g == null) return;
+        HapticFeedback.mediumImpact();
+        showMemberActionsSheet(
+          context,
+          controller: ctrl,
+          guild: g,
+          user: user,
+          member: member,
+          p: p,
+          onViewProfile: () => showUserProfileSheet(
+            context,
+            controller: ctrl,
+            initialUser: user,
+            initialMember: member,
+            guildId: guildId,
+            onNavigateToDm: () {
+              widget.onClosePanel?.call();
+              widget.onNavigateToDm?.call();
+            },
+          ),
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Row(
