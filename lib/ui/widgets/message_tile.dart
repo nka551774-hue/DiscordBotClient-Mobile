@@ -84,6 +84,10 @@ class _MessageTileState extends State<MessageTile> {
     if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
       return '今天 $hh:$mm';
     }
+    final y = now.subtract(const Duration(days: 1));
+    if (dt.year == y.year && dt.month == y.month && dt.day == y.day) {
+      return '昨天 $hh:$mm';
+    }
     return '${dt.year}/${dt.month}/${dt.day} $hh:$mm';
   }
 
@@ -114,7 +118,6 @@ class _MessageTileState extends State<MessageTile> {
     final message = widget.message;
     final palette = widget.palette;
     final isOwn = message.author.id == widget.currentBotUserId;
-    final canDm = !isOwn && !message.author.bot;
     final showEditBtn =
         vc.getSetting<bool>('BotClient', 'embedEditMessageButton', true);
     final isAdvancedEditor = vc.getSetting<String>(
@@ -124,6 +127,10 @@ class _MessageTileState extends State<MessageTile> {
 
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
@@ -197,178 +204,155 @@ class _MessageTileState extends State<MessageTile> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Grouped Action Card
-                  Container(
-                    decoration: BoxDecoration(
-                      color: palette.sidebarBg,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      children: [
+                  // Official mobile action groups (rounded cards, same order as Discord)
+                  ..._sheetGroups([
+                    [
+                      if (isOwn && !message.isDeleted)
                         _sheetTile(
                           ctx,
-                          icon: Icons.reply_rounded,
-                          label: '回覆',
-                          onTap: () => widget.onReply(message),
+                          icon: Icons.edit_outlined,
+                          label: '編輯訊息',
+                          onTap: () => widget.onEdit(message),
                         ),
-                        Divider(height: 1, color: palette.border),
+                      _sheetTile(
+                        ctx,
+                        icon: Icons.reply_rounded,
+                        label: '回覆',
+                        onTap: () => widget.onReply(message),
+                      ),
+                    ],
+                    [
+                      if (message.content.isNotEmpty)
                         _sheetTile(
                           ctx,
-                          icon: Icons.person_outline_rounded,
-                          label: '檢視個人資料',
-                          onTap: _openAuthorProfile,
-                        ),
-                        if (isOwn && !message.isDeleted) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.edit_outlined,
-                            label: '編輯訊息',
-                            onTap: () => widget.onEdit(message),
-                          ),
-                        ],
-                        if (isOwn &&
-                            !message.isDeleted &&
-                            showEditBtn &&
-                            (isAdvancedEditor ||
-                                message.embeds.isNotEmpty ||
-                                message.isComponentsV2)) ...[
-                          Divider(height: 1, color: palette.border),
-                          ListTile(
-                            dense: true,
-                            leading: DbcEmbedIcon(
-                              size: 19,
-                              color: palette.textPrimary,
-                            ),
-                            title: Text(
-                              isAdvancedEditor
-                                  ? '進階訊息 / Embed 編輯器'
-                                  : '編輯 Embed',
-                              style: TextStyle(
-                                color: palette.textPrimary,
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            onTap: () {
-                              Navigator.of(ctx).pop();
-                              widget.onEditEmbed(message);
-                            },
-                          ),
-                        ],
-                        if (vc.isPluginEnabled('Translate') &&
-                            (message.content.isNotEmpty ||
-                                message.embeds.isNotEmpty)) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.translate_rounded,
-                            label: message.translatedText != null
-                                ? '隱藏翻譯結果'
-                                : '翻譯訊息 (Translate)',
-                            onTap: () async {
-                              try {
-                                await widget.controller
-                                    .translateMessageInline(message);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('翻譯失敗：$e')),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                        ],
-                        if (widget.canManageMessages && !message.isDeleted) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.push_pin_outlined,
-                            label: message.pinned ? '取消釘選訊息' : '釘選訊息',
-                            onTap: () => widget.onTogglePin(message),
-                          ),
-                        ],
-                        if (canDm) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.chat_bubble_outline_rounded,
-                            label: '傳送私訊',
-                            onTap: () => widget.onOpenDm(message.author.id),
-                          ),
-                        ],
-                        if (message.content.isNotEmpty) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.copy_rounded,
-                            label: '複製文字',
-                            onTap: () {
-                              Clipboard.setData(
-                                  ClipboardData(text: message.content));
-                            },
-                          ),
-                        ],
-                        if (vc.isPluginEnabled('ViewRaw')) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.code_rounded,
-                            label: '檢視原始資料 (View Raw)',
-                            onTap: () {
-                              showVencordRawModal(
-                                context,
-                                palette: palette,
-                                title: 'Message',
-                                data: message.rawJson ??
-                                    {
-                                      'id': message.id,
-                                      'channel_id': message.channelId,
-                                      'content': message.content,
-                                    },
-                                rawContent: message.content,
-                                sortKeys: vc.getSetting<bool>(
-                                    'ViewRaw', 'sortKeys', true),
-                              );
-                            },
-                          ),
-                        ],
-                        if (vc.isPluginEnabled('MessageLogger') &&
-                            (message.isDeleted ||
-                                message.editHistory.isNotEmpty)) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.history_toggle_off_rounded,
-                            label: '清除訊息紀錄 (MessageLogger)',
-                            onTap: () => widget.controller
-                                .clearLoggedMessageHistory(message),
-                          ),
-                        ],
-                        Divider(height: 1, color: palette.border),
-                        _sheetTile(
-                          ctx,
-                          icon: Icons.tag_rounded,
-                          label: '複製訊息 ID',
+                          icon: Icons.copy_rounded,
+                          label: '複製文字',
                           onTap: () {
-                            Clipboard.setData(ClipboardData(text: message.id));
+                            Clipboard.setData(
+                                ClipboardData(text: message.content));
                           },
                         ),
-                        if ((isOwn || widget.canManageMessages) &&
-                            !message.isDeleted) ...[
-                          Divider(height: 1, color: palette.border),
-                          _sheetTile(
-                            ctx,
-                            icon: Icons.delete_outline_rounded,
-                            label: '刪除訊息',
-                            danger: true,
-                            onTap: () => widget.onDelete(message),
+                      if (widget.canManageMessages && !message.isDeleted)
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.push_pin_outlined,
+                          label: message.pinned ? '取消釘選訊息' : '釘選訊息',
+                          onTap: () => widget.onTogglePin(message),
+                        ),
+                      _sheetTile(
+                        ctx,
+                        icon: Icons.link_rounded,
+                        label: '複製訊息連結',
+                        onTap: () {
+                          final gid =
+                              widget.guild?.id ?? message.guildId ?? '@me';
+                          Clipboard.setData(ClipboardData(
+                            text:
+                                'https://discord.com/channels/$gid/${message.channelId}/${message.id}',
+                          ));
+                        },
+                      ),
+                    ],
+                    [
+                      if (isOwn &&
+                          !message.isDeleted &&
+                          showEditBtn &&
+                          (isAdvancedEditor ||
+                              message.embeds.isNotEmpty ||
+                              message.isComponentsV2))
+                        ListTile(
+                          dense: true,
+                          leading: DbcEmbedIcon(
+                            size: 19,
+                            color: palette.textPrimary,
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
+                          title: Text(
+                            isAdvancedEditor ? '進階訊息 / Embed 編輯器' : '編輯 Embed',
+                            style: TextStyle(
+                              color: palette.textPrimary,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          onTap: () {
+                            Navigator.of(ctx).pop();
+                            widget.onEditEmbed(message);
+                          },
+                        ),
+                      if (vc.isPluginEnabled('Translate') &&
+                          (message.content.isNotEmpty ||
+                              message.embeds.isNotEmpty))
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.translate_rounded,
+                          label: message.translatedText != null
+                              ? '隱藏翻譯結果'
+                              : '翻譯訊息 (Translate)',
+                          onTap: () async {
+                            try {
+                              await widget.controller
+                                  .translateMessageInline(message);
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('翻譯失敗：$e')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      if (vc.isPluginEnabled('ViewRaw'))
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.code_rounded,
+                          label: '檢視原始資料 (View Raw)',
+                          onTap: () {
+                            showVencordRawModal(
+                              context,
+                              palette: palette,
+                              title: 'Message',
+                              data: message.rawJson ??
+                                  {
+                                    'id': message.id,
+                                    'channel_id': message.channelId,
+                                    'content': message.content,
+                                  },
+                              rawContent: message.content,
+                              sortKeys: vc.getSetting<bool>(
+                                  'ViewRaw', 'sortKeys', true),
+                            );
+                          },
+                        ),
+                      if (vc.isPluginEnabled('MessageLogger') &&
+                          (message.isDeleted || message.editHistory.isNotEmpty))
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.history_toggle_off_rounded,
+                          label: '清除訊息紀錄 (MessageLogger)',
+                          onTap: () => widget.controller
+                              .clearLoggedMessageHistory(message),
+                        ),
+                    ],
+                    [
+                      _sheetTile(
+                        ctx,
+                        icon: Icons.tag_rounded,
+                        label: '複製訊息 ID',
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: message.id));
+                        },
+                      ),
+                      if ((isOwn || widget.canManageMessages) &&
+                          !message.isDeleted)
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.delete_outline_rounded,
+                          label: '刪除訊息',
+                          danger: true,
+                          onTap: () => widget.onDelete(message),
+                        ),
+                    ],
+                  ]),
                 ],
               ),
             ),
@@ -376,6 +360,29 @@ class _MessageTileState extends State<MessageTile> {
         );
       },
     );
+  }
+
+  List<Widget> _sheetGroups(List<List<Widget>> groups) {
+    final palette = widget.palette;
+    final out = <Widget>[];
+    for (final g in groups) {
+      if (g.isEmpty) continue;
+      if (out.isNotEmpty) out.add(const SizedBox(height: 10));
+      final rows = <Widget>[];
+      for (var i = 0; i < g.length; i++) {
+        if (i > 0) rows.add(Divider(height: 1, color: palette.border));
+        rows.add(g[i]);
+      }
+      out.add(Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: palette.sidebarBg,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: rows),
+      ));
+    }
+    return out;
   }
 
   Widget _sheetTile(
@@ -446,6 +453,13 @@ class _MessageTileState extends State<MessageTile> {
     }
 
     final replyProgress = (-_dragOffset / 48.0).clamp(0.0, 1.0);
+    final me = widget.currentBotUserId;
+    final rawMentions = message.rawJson?['mentions'];
+    final mentionsMe = me.isNotEmpty &&
+        !message.isDeleted &&
+        (message.rawJson?['mention_everyone'] == true ||
+            (rawMentions is List &&
+                rawMentions.any((u) => u is Map && u['id']?.toString() == me)));
 
     return RepaintBoundary(
       child: Column(
@@ -512,6 +526,17 @@ class _MessageTileState extends State<MessageTile> {
             child: Stack(
               alignment: Alignment.centerRight,
               children: [
+                if (mentionsMe)
+                  const Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Color(0x1FF0B232),
+                        border: Border(
+                          left: BorderSide(color: Color(0xFFF0B232), width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (replyProgress > 0.05)
                   Positioned(
                     right: 14,

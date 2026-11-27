@@ -170,21 +170,19 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.6.1
+          tag_name: v1.7.0
           make_latest: true
-          name: "DiscordBotClient Mobile v1.6.1 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.7.0 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.6.1
+            ## DiscordBotClient Mobile v1.7.0
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
 
-            ### v1.6.1 更新內容
-            - **修復並完整支援所有伺服器自訂表情 (Server Emojis)**：
-              - 補齊 `GET /guilds/{id}/emojis` 跨伺服器表情自動同步與 Gateway `GUILD_EMOJIS_UPDATE` 即時更新，解決部分伺服器或分片環境下伺服器表情未載入的問題。
-              - 表情選擇器升級支援搜尋與顯示機器人所在**所有伺服器**的自訂表情（當前伺服器優先排列，私人訊息內亦可直接使用所有伺服器表情）及分組跳轉列。
-              - 聊天輸入框新增 `:表情名稱` 即時自動補全選單，並支援直接輸入 `:名稱:` 自動轉換為 `<:name:id>` / `<a:name:id>` 及獨立大圖表情 (Jumbo Emojis) 渲染。
-              - 內建 Vencord `FakeNitro` 插件相容層：當目標頻道關閉 `Use External Emojis` 權限或伺服器失去加成時，自動以高畫質表情超連結發送並於聊天室行內渲染。
-              - 修復訊息自訂表情反應 (`PUT /reactions/.../@me`) 的 URI 冒號編碼問題。
-            - **Vencord 插件與主題完整相容**：內建 19 款官方 Vencord 插件（含 `BotClient` Application Emojis 與 Components V2 編輯器、`FakeNitro`、`MessageLogger`、`ShowHiddenChannels`、`NoReplyMention`、`SilentMessageToggle`、`Translate`、`WhoReacted`、`ViewRaw` 等）、自訂 Userplugin 安裝器、Online Themes / QuickCSS 與 `vencord-settings-backup.json` 備份同步。
+            ### v1.7.0 更新內容 (對齊官方 Discord 手機版介面與互動)
+            - **官方底部導覽列**：以「首頁 / 通知 / 你」三分頁取代懸浮 You Bar；通知改為完整分頁並顯示相對時間，「你」分頁直接嵌入個人資料頁，長按「你」可切換帳號，返回鍵會先回到「首頁」。
+            - **訊息長按選單**：改為官方分組卡片排序（編輯 / 回覆 → 複製文字 / 釘選 / 複製訊息連結 → 插件功能 → 複製 ID / 刪除），新增「複製訊息連結」。
+            - **聊天輸入列**：與官方相同只保留「+」與表情按鈕，相片、Embed / 進階訊息編輯器、時間戳記與無聲訊息移入「+」面板。
+            - **訊息顯示**：提及自己或 @everyone 的訊息以金色底色與左側金條標示；時間戳記支援「昨天 HH:MM」。
+            - **私訊列表**：右側顯示最後訊息的相對時間（剛剛 / 分 / 小時 / 天）。
 
             ### 下載檔案說明
             - **Android (推薦現代手機)**: `DiscordBotClient-arm64-v8a.apk`（體積最小、純 64 位元原生機器碼）

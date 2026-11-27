@@ -23,10 +23,22 @@ void showYouProfileModal(
   );
 }
 
-class _YouProfileModalSheet extends StatelessWidget {
+/// Official mobile "You" tab: same content as the profile sheet, embedded full-page.
+class YouProfilePage extends StatelessWidget {
   final BotClientController controller;
 
-  const _YouProfileModalSheet({required this.controller});
+  const YouProfilePage({super.key, required this.controller});
+
+  @override
+  Widget build(BuildContext context) =>
+      _YouProfileModalSheet(controller: controller, embedded: true);
+}
+
+class _YouProfileModalSheet extends StatelessWidget {
+  final BotClientController controller;
+  final bool embedded;
+
+  const _YouProfileModalSheet({required this.controller, this.embedded = false});
 
   Color _deriveFallbackBannerColor(String id) {
     const palette = [
@@ -61,14 +73,16 @@ class _YouProfileModalSheet extends StatelessWidget {
         final createdStr =
             '${created.year}年${created.month}月${created.day}日';
 
-        final height = MediaQuery.of(context).size.height * 0.90;
+        final height =
+            embedded ? null : MediaQuery.of(context).size.height * 0.90;
 
         return Container(
           height: height,
           decoration: BoxDecoration(
             color: sheetBg,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: embedded
+                ? BorderRadius.zero
+                : const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           clipBehavior: Clip.antiAlias,
           child: ListView(
@@ -106,6 +120,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                     ),
 
                     // Top-left Close Button
+                    if (!embedded)
                     Positioned(
                       top: 14,
                       left: 14,
@@ -130,7 +145,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                           _bannerCircleButton(
                             icon: Icons.settings_rounded,
                             onTap: () {
-                              Navigator.of(context).pop();
+                              if (!embedded) Navigator.of(context).pop();
                               Navigator.of(context).push(
                                 MaterialPageRoute<void>(
                                   builder: (_) => DiscordSettingsScreen(

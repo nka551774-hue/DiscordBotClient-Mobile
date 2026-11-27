@@ -34,6 +34,8 @@ class _HomeScreenState extends State<HomeScreen>
   late final AnimationController _panelCtrl;
   final _dmSearchCtrl = TextEditingController();
   String _dmFilter = '';
+  // Official mobile bottom tabs: 0 = 首頁 (servers/DMs), 1 = 通知, 2 = 你
+  int _homeTab = 0;
 
   @override
   void initState() {
@@ -64,19 +66,6 @@ class _HomeScreenState extends State<HomeScreen>
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
     );
-  }
-
-  static String _statusLabelZh(String st) {
-    switch (st) {
-      case 'idle':
-        return '閒置';
-      case 'dnd':
-        return '請勿打擾';
-      case 'invisible':
-        return '隱形';
-      default:
-        return '線上';
-    }
   }
 
   void _openChannelChat(String channelId, {String? guildId}) {
@@ -308,132 +297,145 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _showNotificationsSheet(BotClientController ctrl, DiscordPalette p) {
-    ctrl.markNotificationsRead();
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final items = ctrl.notifications;
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.78,
-          minChildSize: 0.45,
-          maxChildSize: 0.94,
-          builder: (_, sCtrl) {
-            return Column(
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: p.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-                  child: Row(
-                    children: [
-                      Text(
-                        '通知',
-                        style: TextStyle(
-                          color: p.textPrimary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+  Widget _buildNotificationsPage(BotClientController ctrl, DiscordPalette p) {
+    final items = ctrl.notifications;
+    return Container(
+      color: p.sidebarBg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Text(
+              '通知',
+              style: TextStyle(
+                color: p.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Divider(height: 1, color: p.border),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.notifications_none_rounded,
+                            size: 46, color: p.textMuted),
+                        const SizedBox(height: 10),
+                        Text(
+                          '目前沒有任何提及或私訊通知',
+                          style: TextStyle(
+                            color: p.textSecondary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                Divider(height: 1, color: p.border),
-                Expanded(
-                  child: items.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    itemCount: items.length,
+                    itemBuilder: (_, idx) {
+                      final msg = items[idx];
+                      final guild = ctrl.findGuildById(msg.guildId);
+                      final ch = ctrl.findChannelById(msg.channelId);
+                      final whereLabel = guild != null
+                          ? '${guild.name}  •  #${ch?.name ?? 'channel'}'
+                          : '私人訊息';
+
+                      return InkWell(
+                        onTap: () async {
+                          setState(() => _homeTab = 0);
+                          if (msg.guildId != null) {
+                            await ctrl.selectGuild(msg.guildId!);
+                          }
+                          _openChannelChat(msg.channelId,
+                              guildId: msg.guildId);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.notifications_none_rounded,
-                                  size: 46, color: p.textMuted),
-                              const SizedBox(height: 10),
-                              Text(
-                                '目前沒有任何提及或私訊通知',
-                                style: TextStyle(
-                                  color: p.textSecondary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
+                              CircleAvatar(
+                                radius: 20,
+                                backgroundImage: NetworkImage(
+                                    msg.author.avatarUrl(size: 64)),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            whereLabel,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                                color: p.textMuted,
+                                                fontSize: 12),
+                                          ),
+                                        ),
+                                        Text(
+                                          _shortAgo(msg.timestamp),
+                                          style: TextStyle(
+                                              color: p.textMuted,
+                                              fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      msg.authorDisplayName(guild),
+                                      style: TextStyle(
+                                        color: p.textPrimary,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      msg.content.isEmpty
+                                          ? '[附件 / Embed]'
+                                          : msg.content,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          color: p.textSecondary,
+                                          fontSize: 13.5),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                        )
-                      : ListView.separated(
-                          controller: sCtrl,
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              Divider(height: 1, color: p.border),
-                          itemBuilder: (_, idx) {
-                            final msg = items[idx];
-                            final guild = ctrl.findGuildById(msg.guildId);
-                            final ch = ctrl.findChannelById(msg.channelId);
-                            final whereLabel = guild != null
-                                ? '${guild.name}  •  #${ch?.name ?? 'channel'}'
-                                : '私人訊息';
-
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundImage: NetworkImage(
-                                    msg.author.avatarUrl(size: 64)),
-                              ),
-                              title: Text(
-                                whereLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    color: p.textMuted, fontSize: 12),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    msg.authorDisplayName(guild),
-                                    style: TextStyle(
-                                      color: p.textPrimary,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  Text(
-                                    msg.content.isEmpty
-                                        ? '[附件 / Embed]'
-                                        : msg.content,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                        color: p.textSecondary, fontSize: 13.5),
-                                  ),
-                                ],
-                              ),
-                              onTap: () async {
-                                Navigator.of(ctx).pop();
-                                if (msg.guildId != null) {
-                                  await ctrl.selectGuild(msg.guildId!);
-                                }
-                                _openChannelChat(msg.channelId,
-                                    guildId: msg.guildId);
-                              },
-                            );
-                          },
                         ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Discord mobile relative time used in DM list / notifications.
+  static String _shortAgo(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return '剛剛';
+    if (d.inHours < 1) return '${d.inMinutes} 分';
+    if (d.inDays < 1) return '${d.inHours} 小時';
+    if (d.inDays < 30) return '${d.inDays} 天';
+    if (d.inDays < 365) return '${d.inDays ~/ 30} 個月';
+    return '${d.inDays ~/ 365} 年';
   }
 
   void _openPinsModal(DiscordPalette p) {
@@ -594,12 +596,17 @@ class _HomeScreenState extends State<HomeScreen>
       animation: _panelCtrl,
       builder: (context, _) {
         final v = _panelCtrl.value; // -1.0 (Left) .. 0.0 (Chat) .. +1.0 (Right)
-        final canPopApp = v <= -0.95;
+        // Back on 通知 / 你 returns to 首頁 first, like the official app.
+        final canPopApp = v <= -0.95 && _homeTab == 0;
 
         return PopScope(
           canPop: canPopApp,
           onPopInvokedWithResult: (didPop, _) {
             if (didPop) return;
+            if (v <= -0.95 && _homeTab != 0) {
+              setState(() => _homeTab = 0);
+              return;
+            }
             if (v > 0.2) {
               _animateToPanel(0.0);
             } else {
@@ -638,7 +645,7 @@ class _HomeScreenState extends State<HomeScreen>
                           details.globalPosition.dx < w - 44) {
                         return;
                       }
-                      if (ctrl.selectedChannel == null &&
+                      if ((ctrl.selectedChannel == null || _homeTab != 0) &&
                           _panelCtrl.value <= -0.95 &&
                           dx < 0) {
                         return;
@@ -812,9 +819,7 @@ class _HomeScreenState extends State<HomeScreen>
     final hasUnreadDms =
         ctrl.dmChannels.any((c) => ctrl.unreadChannelIds.contains(c.id));
 
-    return Stack(
-      children: [
-        Padding(
+    final Widget homeBody = Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -823,7 +828,7 @@ class _HomeScreenState extends State<HomeScreen>
               SizedBox(
                 width: 68,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(0, 6, 0, 96),
+                  padding: const EdgeInsets.fromLTRB(0, 6, 0, 12),
                   children: [
                     // Top Direct Messages Circle Button
                     Padding(
@@ -975,203 +980,168 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ],
           ),
-        ),
+        );
 
-        // Bottom Clean Solid Floating "You Bar" (NO fake user nameplate cosmetics!)
-        Positioned(
-          left: 10,
-          right: 10,
-          bottom: MediaQuery.of(context).padding.bottom + 8,
-          child: _buildCleanFloatingYouBar(ctrl, p),
+    return Column(
+      children: [
+        Expanded(
+          child: _homeTab == 1
+              ? _buildNotificationsPage(ctrl, p)
+              : (_homeTab == 2 ? YouProfilePage(controller: ctrl) : homeBody),
         ),
+        _buildBottomTabBar(ctrl, p),
       ],
     );
   }
 
-  /// Clean, non-decorated Discord Mobile "You Bar":
-  /// - Tap: opens Profile Modal
-  /// - Long-press: opens Switch Accounts
-  /// - Horizontal swipe across You Bar: flips between DMs and active Server!
-  Widget _buildCleanFloatingYouBar(
-    BotClientController ctrl,
-    DiscordPalette p,
-  ) {
+  /// Official Discord mobile bottom navigation (首頁 / 通知 / 你).
+  /// Long-press 「你」 switches accounts, same as the official app.
+  Widget _buildBottomTabBar(BotClientController ctrl, DiscordPalette p) {
     final acc = ctrl.activeAccount;
-    if (acc == null) return const SizedBox.shrink();
-
     final badgeCount = ctrl.unreadNotificationCount;
+    final hasUnreadDms =
+        ctrl.dmChannels.any((c) => ctrl.unreadChannelIds.contains(c.id));
 
-    return GestureDetector(
-      onTap: () => showYouProfileModal(context, ctrl),
-      onLongPress: () => showSwitchAccountsSheet(context, ctrl),
-      onHorizontalDragEnd: (details) {
-        if ((details.primaryVelocity ?? 0).abs() > 260) {
-          HapticFeedback.selectionClick();
-          ctrl.flipDmAndServer();
-        }
-      },
-      child: Container(
-        height: 58,
-        decoration: BoxDecoration(
-          color: p.bottomBarBg,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: p.border, width: 1.0),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x99000000),
-              blurRadius: 18,
-              offset: Offset(0, 6),
-            ),
-          ],
+    Widget tab({
+      required int index,
+      required Widget icon,
+      required String label,
+      VoidCallback? onLongPress,
+    }) {
+      final selected = _homeTab == index;
+      return Expanded(
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            if (index == 1) ctrl.markNotificationsRead();
+            setState(() => _homeTab = index);
+          },
+          onLongPress: onLongPress,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconTheme(
+                data: IconThemeData(
+                  size: 24,
+                  color: selected ? p.textPrimary : p.textMuted,
+                ),
+                child: icon,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? p.textPrimary : p.textMuted,
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
-        padding: const EdgeInsets.fromLTRB(7, 6, 10, 6),
+      );
+    }
+
+    Widget badged(Widget child, {int count = 0, bool dot = false}) {
+      if (count <= 0 && !dot) return child;
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          child,
+          Positioned(
+            right: count > 0 ? -9 : -2,
+            top: -4,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: DiscordPalette.danger,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: p.bottomBarBg, width: 2),
+              ),
+              child: count > 0
+                  ? Text(
+                      count > 99 ? '99+' : '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(
+        color: p.bottomBarBg,
+        border: Border(top: BorderSide(color: p.border, width: 0.6)),
+      ),
+      child: SizedBox(
+        height: 56,
         child: Row(
           children: [
-            // Avatar + Authentic Status Badge
-            GestureDetector(
-              onLongPress: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => DiscordSettingsScreen(controller: ctrl),
-                  ),
-                );
-              },
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundImage: NetworkImage(acc.avatarUrl(size: 96)),
-                  ),
-                  Positioned(
-                    right: -1,
-                    bottom: -1,
-                    child: DiscordStatusBadge(
-                      status: ctrl.botStatus,
-                      size: 15,
-                      borderColor: p.bottomBarBg,
-                      borderWidth: 2.6,
-                    ),
-                  ),
-                ],
+            tab(
+              index: 0,
+              icon: badged(
+                Icon(_homeTab == 0 ? Icons.home_rounded : Icons.home_outlined),
+                dot: hasUnreadDms && _homeTab != 0,
               ),
+              label: '首頁',
             ),
-            const SizedBox(width: 10),
-
-            // Display Name + Official APP Badge + Chevron + Status Subtitle
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          acc.displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: p.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4.5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: DiscordPalette.blurple,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (acc.isVerifiedBot) ...[
-                              const Icon(Icons.check_rounded,
-                                  size: 10, color: Colors.white),
-                              const SizedBox(width: 1),
-                            ],
-                            const Text(
-                              'APP',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w800,
-                              ),
+            tab(
+              index: 1,
+              icon: badged(
+                Icon(_homeTab == 1
+                    ? Icons.notifications_rounded
+                    : Icons.notifications_none_rounded),
+                count: badgeCount,
+              ),
+              label: '通知',
+            ),
+            tab(
+              index: 2,
+              icon: acc == null
+                  ? const Icon(Icons.person_rounded)
+                  : Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(1.5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _homeTab == 2
+                                  ? p.textPrimary
+                                  : Colors.transparent,
+                              width: 1.5,
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 18,
-                        color: p.textSecondary,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    ctrl.botActivityName.isNotEmpty
-                        ? ctrl.botActivityName
-                        : _statusLabelZh(ctrl.botStatus),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: p.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Right Notification Bell Pill (red badge ONLY when unread notifications > 0!)
-            GestureDetector(
-              onTap: () => _showNotificationsSheet(ctrl, p),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                decoration: BoxDecoration(
-                  color: p.elevatedBg,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      badgeCount > 0
-                          ? Icons.notifications_rounded
-                          : Icons.notifications_none_rounded,
-                      color: p.textPrimary,
-                      size: 19,
-                    ),
-                    if (badgeCount > 0) ...[
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 5.5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: DiscordPalette.danger,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          badgeCount > 99 ? '99+' : '$badgeCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                          ),
+                          child: CircleAvatar(
+                            radius: 11,
+                            backgroundImage:
+                                NetworkImage(acc.avatarUrl(size: 64)),
                           ),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: DiscordStatusBadge(
+                            status: ctrl.botStatus,
+                            size: 10,
+                            borderColor: p.bottomBarBg,
+                            borderWidth: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+              label: '你',
+              onLongPress: () => showSwitchAccountsSheet(context, ctrl),
             ),
           ],
         ),
@@ -1679,7 +1649,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     return ListView(
-      padding: const EdgeInsets.only(bottom: 92),
+      padding: const EdgeInsets.only(bottom: 12),
       children: [
         // Server Header (checks REAL guild.features for badges & Community status!)
         Padding(
@@ -2225,7 +2195,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 92),
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
                   itemCount: dms.length,
                   itemBuilder: (_, idx) {
                     final ch = dms[idx];
@@ -2283,6 +2253,19 @@ class _HomeScreenState extends State<HomeScreen>
                             style:
                                 TextStyle(color: p.textMuted, fontSize: 12.5),
                           ),
+                          trailing: ch.lastMessageId == null
+                              ? null
+                              : Text(
+                                  _shortAgo(
+                                      snowflakeCreatedAt(ch.lastMessageId!)),
+                                  style: TextStyle(
+                                    color: unread ? Colors.white : p.textMuted,
+                                    fontSize: 12,
+                                    fontWeight: unread
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
                           onTap: () => _openChannelChat(ch.id, guildId: null),
                         ),
                       ],
@@ -2550,6 +2533,135 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  void _openEmbedComposer(DiscordPalette p, bool isAdvancedEditor) {
+    final ctrl = widget.controller;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => EmbedComposerSheet(
+        palette: p,
+        advancedDefault: isAdvancedEditor,
+        onSend: (emb, extra) => _send(
+          embeds: [emb],
+          overrideContent: extra,
+        ),
+        onSendRawPayload: isAdvancedEditor
+            ? (rawMap) async {
+                final rId = _replyTarget?.id;
+                final rPing = _replyMention;
+                setState(() => _replyTarget = null);
+                try {
+                  await ctrl.sendChatMessage(
+                    rawPayloadOverride: rawMap,
+                    replyToMessageId: rId,
+                    replyMention: rPing,
+                  );
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('$e')),
+                    );
+                  }
+                }
+              }
+            : null,
+      ),
+    );
+  }
+
+  /// Official mobile "+" panel: media first, then apps / tools.
+  void _showComposerPlusSheet(
+    DiscordPalette p, {
+    required bool showEmbed,
+    required bool isAdvancedEditor,
+  }) {
+    final vc = widget.controller.vencord;
+    Widget item(IconData icon, String label, VoidCallback onTap,
+        {Widget? leading}) {
+      return ListTile(
+        leading: leading ?? Icon(icon, color: p.textPrimary, size: 22),
+        title: Text(
+          label,
+          style: TextStyle(
+            color: p.textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        onTap: onTap,
+      );
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: p.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: p.sidebarBg,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    item(Icons.photo_library_outlined, '相片', () {
+                      Navigator.of(ctx).pop();
+                      _pickAttachment();
+                    }),
+                    if (showEmbed)
+                      item(
+                        Icons.code_rounded,
+                        isAdvancedEditor ? '進階訊息編輯器' : '建立 Embed',
+                        () {
+                          Navigator.of(ctx).pop();
+                          _openEmbedComposer(p, isAdvancedEditor);
+                        },
+                        leading: DbcEmbedIcon(size: 22, color: p.textPrimary),
+                      ),
+                    if (vc.isPluginEnabled('SendTimestamps'))
+                      item(Icons.schedule_rounded, '插入時間戳記', () {
+                        Navigator.of(ctx).pop();
+                        showTimestampPickerSheet(
+                          context,
+                          palette: p,
+                          onInsert: _insertTextAtCursor,
+                        );
+                      }),
+                    if (vc.isPluginEnabled('SilentMessageToggle'))
+                      item(
+                        _silentMessage
+                            ? Icons.notifications_off_rounded
+                            : Icons.notifications_none_rounded,
+                        _silentMessage ? '關閉無聲訊息' : '傳送無聲訊息 (@silent)',
+                        () {
+                          Navigator.of(ctx).pop();
+                          HapticFeedback.selectionClick();
+                          setState(() => _silentMessage = !_silentMessage);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildSlashAutocompleteBar(DiscordPalette p) {
@@ -3321,7 +3433,13 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 GestureDetector(
-                  onTap: canSend ? _pickAttachment : null,
+                  onTap: canSend
+                      ? () => _showComposerPlusSheet(
+                            p,
+                            showEmbed: canEmbed && showEmbedChatBtn,
+                            isAdvancedEditor: isAdvancedEditor,
+                          )
+                      : null,
                   child: Container(
                     width: 38,
                     height: 38,
@@ -3368,9 +3486,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             ),
                           ),
                         ),
-                        if (canSend &&
-                            ctrl.vencord
-                                .isPluginEnabled('SilentMessageToggle'))
+                        if (canSend && _silentMessage)
                           IconButton(
                             visualDensity: VisualDensity.compact,
                             padding: const EdgeInsets.all(4),
@@ -3378,35 +3494,12 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             tooltip: '無聲訊息 (@silent)',
                             onPressed: () {
                               HapticFeedback.selectionClick();
-                              setState(
-                                  () => _silentMessage = !_silentMessage);
+                              setState(() => _silentMessage = false);
                             },
                             icon: Icon(
-                              _silentMessage
-                                  ? Icons.notifications_off_rounded
-                                  : Icons.notifications_none_rounded,
+                              Icons.notifications_off_rounded,
                               size: 19,
-                              color: _silentMessage
-                                  ? p.brandColor
-                                  : p.textSecondary,
-                            ),
-                          ),
-                        if (canSend &&
-                            ctrl.vencord.isPluginEnabled('SendTimestamps'))
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.all(4),
-                            constraints: const BoxConstraints(),
-                            tooltip: '插入動態時間戳記',
-                            onPressed: () => showTimestampPickerSheet(
-                              context,
-                              palette: p,
-                              onInsert: _insertTextAtCursor,
-                            ),
-                            icon: Icon(
-                              Icons.schedule_rounded,
-                              size: 19,
-                              color: p.textSecondary,
+                              color: p.brandColor,
                             ),
                           ),
                         if (canSend)
@@ -3430,54 +3523,6 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             ),
                             icon: Icon(
                               Icons.emoji_emotions_outlined,
-                              size: 19,
-                              color: p.textSecondary,
-                            ),
-                          ),
-                        if (canSend && canEmbed && showEmbedChatBtn)
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.all(4),
-                            constraints: const BoxConstraints(),
-                            tooltip: isAdvancedEditor
-                                ? 'Advanced Message Editor'
-                                : 'Create Embed',
-                            onPressed: () {
-                              showModalBottomSheet<void>(
-                                context: context,
-                                isScrollControlled: true,
-                                builder: (_) => EmbedComposerSheet(
-                                  palette: p,
-                                  advancedDefault: isAdvancedEditor,
-                                  onSend: (emb, extra) => _send(
-                                    embeds: [emb],
-                                    overrideContent: extra,
-                                  ),
-                                  onSendRawPayload: isAdvancedEditor
-                                      ? (rawMap) async {
-                                          final rId = _replyTarget?.id;
-                                          final rPing = _replyMention;
-                                          setState(() => _replyTarget = null);
-                                          try {
-                                            await ctrl.sendChatMessage(
-                                              rawPayloadOverride: rawMap,
-                                              replyToMessageId: rId,
-                                              replyMention: rPing,
-                                            );
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(
-                                                SnackBar(content: Text('$e')),
-                                              );
-                                            }
-                                          }
-                                        }
-                                      : null,
-                                ),
-                              );
-                            },
-                            icon: DbcEmbedIcon(
                               size: 19,
                               color: p.textSecondary,
                             ),
