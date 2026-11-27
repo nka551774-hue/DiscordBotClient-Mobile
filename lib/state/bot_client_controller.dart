@@ -355,23 +355,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       } catch (_) {}
     }
 
-    final lastActiveId = _prefs?.getString(_kActiveAccountIdKey);
-    if (lastActiveId != null && _savedAccounts.isNotEmpty) {
-      BotAccount? target;
-      for (final acc in _savedAccounts) {
-        if (acc.id == lastActiveId) {
-          target = acc;
-          break;
-        }
-      }
-      if (target != null) {
-        _initializing = false;
-        notifyListeners();
-        await loginWithToken(target.token, silentAccountSwitch: true);
-        return;
-      }
-    }
-
+    // No auto-login on launch: the user picks an account from the chooser.
     _initializing = false;
     notifyListeners();
   }

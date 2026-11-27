@@ -43,7 +43,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final showAccountPicker = hasSaved && !_showTokenForm;
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      // Keep the backdrop full-screen behind the keyboard (resizing exposed a
+      // black strip); the form scrolls above the keyboard via viewInsets.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -80,8 +82,8 @@ class _LoginScreenState extends State<LoginScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 56),
+                padding: EdgeInsets.fromLTRB(16, 56, 16,
+                    56 + MediaQuery.of(context).viewInsets.bottom),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 480),
                   child: Container(
