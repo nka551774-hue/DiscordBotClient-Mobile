@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../models/discord_models.dart';
@@ -841,6 +842,29 @@ class _HomeScreenState extends State<HomeScreen>
 );
 }
 
+  /// Official red mention / unread counter (pill with a ring in the rail colour).
+  Widget _redCountBadge(int count, Color ring) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: DiscordPalette.danger,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: ring, width: 3),
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
+
   Widget _buildLeftNavigationPanel(
     BotClientController ctrl,
     DiscordPalette p,
@@ -907,6 +931,36 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
 
+                    // Official: each DM with unread messages pops up here as the
+                    // sender's avatar with a red unread counter.
+                    for (final dm in ctrl.unreadDmChannels)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: GestureDetector(
+                          onTap: () => _openChannelChat(dm.id, guildId: null),
+                          child: Center(
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                CircleAvatar(
+                                  radius: 23,
+                                  backgroundColor: DiscordPalette.blurple,
+                                  backgroundImage: dm.dmRecipient != null
+                                      ? NetworkImage(dm.dmRecipient!
+                                          .avatarUrl(size: 96))
+                                      : null,
+                                ),
+                                Positioned(
+                                  right: -5,
+                                  bottom: -5,
+                                  child: _redCountBadge(
+                                      ctrl.mentionCount(dm.id), p.railBg),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 18, vertical: 6),
@@ -920,6 +974,7 @@ class _HomeScreenState extends State<HomeScreen>
                       final hasUnread = g.channels
                           .any((c) => ctrl.unreadChannelIds.contains(c.id));
                       final iconUrl = g.iconUrl(size: iconPx);
+                      final mentions = ctrl.guildMentionCount(g);
 
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4.5),
@@ -940,6 +995,9 @@ class _HomeScreenState extends State<HomeScreen>
                                 ),
                               ),
                               const Spacer(),
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
                               Container(
                                 width: 46,
                                 height: 46,
@@ -975,6 +1033,15 @@ class _HomeScreenState extends State<HomeScreen>
                                           fontSize: 13.5,
                                         ),
                                       ),
+                              ),
+                                  if (mentions > 0)
+                                    Positioned(
+                                      right: -5,
+                                      bottom: -5,
+                                      child:
+                                          _redCountBadge(mentions, p.railBg),
+                                    ),
+                                ],
                               ),
                               const Spacer(),
                               const SizedBox(width: 4),
@@ -1909,6 +1976,7 @@ class _HomeScreenState extends State<HomeScreen>
     final unread = !isHiddenChannel &&
         ctrl.selectedChannelId != ch.id &&
         ctrl.unreadChannelIds.contains(ch.id);
+    final mentions = isHiddenChannel ? 0 : ctrl.mentionCount(ch.id);
     final isRules = guild.rulesChannelId == ch.id;
     final isLocked = isHiddenChannel ||
         ch.permissionOverwrites.any(
@@ -2007,6 +2075,10 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                   ),
+                  if (mentions > 0) ...[
+                    const SizedBox(width: 6),
+                    _redCountBadge(mentions, p.sidebarBg),
+                  ],
                   if (ch.isVoice &&
                       (ch.userLimit > 0 || voiceStates.isNotEmpty)) ...[
                     const SizedBox(width: 6),
@@ -2328,7 +2400,10 @@ class _HomeScreenState extends State<HomeScreen>
                             style:
                                 TextStyle(color: p.textMuted, fontSize: 12.5),
                           ),
-                          trailing: ch.lastMessageId == null
+                          trailing: ctrl.mentionCount(ch.id) > 0
+                              ? _redCountBadge(
+                                  ctrl.mentionCount(ch.id), p.sidebarBg)
+                              : ch.lastMessageId == null
                               ? null
                               : Text(
                                   _shortAgo(
@@ -2482,6 +2557,25 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     final shouldShowJump = pos.pixels > 380;
     if (shouldShowJump != _showJumpBottom) {
       setState(() => _showJumpBottom = shouldShowJump);
+    }
+  }
+
+  /// Any file type (documents, audio, video, zip…), like the official "+" menu.
+  Future<void> _pickAnyFile() async {
+    try {
+      final file = await FilePicker.pickFile();
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pendingAttachmentBytes = bytes;
+        _pendingAttachmentName = file.name;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
     }
   }
 
@@ -2700,6 +2794,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                       Navigator.of(ctx).pop();
                       _pickAttachment();
                     }),
+                    item(Icons.attach_file_rounded, tr('檔案'), () {
+                      Navigator.of(ctx).pop();
+                      _pickAnyFile();
+                    }),
                     if (showEmbed)
                       item(
                         Icons.code_rounded,
@@ -2737,6 +2835,91 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _conversationStart(
+    BotClientController ctrl,
+    DiscordPalette p,
+    DiscordChannel channel,
+    DiscordUser? dmUser,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (channel.isDm && dmUser != null)
+            GestureDetector(
+              onTap: () => showUserProfileSheet(
+                context,
+                controller: ctrl,
+                initialUser: dmUser,
+                guildId: null,
+                onNavigateToDm: widget.onEnsureCenterChat,
+              ),
+              child: CircleAvatar(
+                radius: 40,
+                backgroundImage: NetworkImage(dmUser.avatarUrl(size: 160)),
+              ),
+            )
+          else
+            Container(
+              width: 68,
+              height: 68,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: p.inputBg, shape: BoxShape.circle),
+              child: DiscordChannelHashIcon(
+                locked: false,
+                color: p.textPrimary,
+                size: 38,
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            channel.isDm
+                ? channel.displayTitle
+                : trf('歡迎來到 #{0}！', [channel.name]),
+            style: TextStyle(
+              color: p.textPrimary,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (channel.isDm && dmUser != null)
+            Text(
+              dmUser.username,
+              style: TextStyle(
+                color: p.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text(
+            channel.isDm
+                ? trf('這是您與 {0} 私人訊息紀錄的開頭。', [channel.displayTitle])
+                : trf('這是 #{0} 頻道的起點。', [channel.name]),
+            style: TextStyle(color: p.textSecondary, fontSize: 14),
+          ),
+          if (channel.isDm && dmUser != null) ...[
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: () => showUserProfileSheet(
+                context,
+                controller: ctrl,
+                initialUser: dmUser,
+                guildId: null,
+                onNavigateToDm: widget.onEnsureCenterChat,
+              ),
+              icon: const Icon(Icons.person_outline_rounded, size: 18),
+              label: Text(tr('檢視個人資料')),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Divider(height: 1, color: p.border),
+        ],
       ),
     );
   }
@@ -3190,8 +3373,15 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                               reverse: true,
                               padding:
                                   const EdgeInsets.symmetric(vertical: 10),
-                              itemCount: messages.length,
+                              itemCount: messages.length +
+                                  (ctrl.isAtChannelStart(channel.id) ? 1 : 0),
                               itemBuilder: (context, index) {
+                                // Official "beginning of conversation" header
+                                // once history is loaded back to the start.
+                                if (index == messages.length) {
+                                  return _conversationStart(
+                                      ctrl, p, channel, dmUser);
+                                }
                                 final msg = messages[index];
                                 bool compact = false;
                                 bool showDateDivider = false;

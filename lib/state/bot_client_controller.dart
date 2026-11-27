@@ -136,6 +136,45 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   final Set<String> _unreadChannelIds = <String>{};
   Set<String> get unreadChannelIds => _unreadChannelIds;
 
+  // Official red badges: @mentions per channel; every unread DM message counts.
+  final Map<String, int> _mentionCounts = <String, int>{};
+  int mentionCount(String channelId) => _mentionCounts[channelId] ?? 0;
+  int guildMentionCount(DiscordGuild g) =>
+      g.channels.fold(0, (sum, c) => sum + mentionCount(c.id));
+
+  /// DMs with unread messages, newest first (shown on the server rail).
+  List<DiscordChannel> get unreadDmChannels {
+    final list = _dmChannels.values
+        .where((c) => mentionCount(c.id) > 0)
+        .toList()
+      ..sort((a, b) =>
+          compareSnowflakes(b.lastMessageId ?? b.id, a.lastMessageId ?? a.id));
+    return list;
+  }
+
+  // Channels whose history has been loaded back to the first message.
+  final Set<String> _channelsAtStart = <String>{};
+  bool isAtChannelStart(String channelId) =>
+      _channelsAtStart.contains(channelId);
+
+  bool _messageMentionsBot(DiscordMessage msg, String botId) {
+    if (msg.guildId == null) return true;
+    final raw = msg.rawJson;
+    if (raw?['mention_everyone'] == true) return true;
+    final mentions = raw?['mentions'];
+    if (mentions is List &&
+        mentions.any((u) => u is Map && u['id']?.toString() == botId)) {
+      return true;
+    }
+    final roles = raw?['mention_roles'];
+    final botRoles = _guilds[msg.guildId]?.botRoleIds ?? const <String>[];
+    if (roles is List && roles.any((r) => botRoles.contains(r.toString()))) {
+      return true;
+    }
+    return msg.content.contains('<@$botId>') ||
+        msg.content.contains('<@!$botId>');
+  }
+
   int _unreadNotificationCount = 0;
   int get unreadNotificationCount => _unreadNotificationCount;
 
@@ -615,7 +654,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         (_messageCache[channelId]?.isNotEmpty == true
             ? _messageCache[channelId]!.first.id
             : ch?.lastMessageId);
-    final hadUnread = _unreadChannelIds.remove(channelId);
+    final hadMentions = _mentionCounts.remove(channelId) != null;
+    final hadUnread = _unreadChannelIds.remove(channelId) || hadMentions;
     if (newestId != null &&
         compareSnowflakes(newestId, _lastReadMessageId[channelId]) > 0) {
       _lastReadMessageId[channelId] = newestId;
@@ -1102,6 +1142,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final fetchedRaw =
           await _rest!.getChannelMessages(channelId, limit: 50);
+      if (fetchedRaw.length < 50) _channelsAtStart.add(channelId);
       _cacheMessageAuthorsInGuild(fetchedRaw);
       _prefetchLoggerImages(fetchedRaw.take(30));
       final fetched = _withLoggedDeletes(channelId, fetchedRaw);
@@ -1190,6 +1231,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     if (chId == null || _rest == null || _loadingOlderMessages) return;
     final current = _messageCache[chId];
     if (current == null || current.isEmpty) return;
+    if (_channelsAtStart.contains(chId)) return;
 
     _loadingOlderMessages = true;
     final oldestId = current.last.id;
@@ -1199,6 +1241,12 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         before: oldestId,
         limit: 50,
       );
+      if (older.length < 50) {
+        _channelsAtStart.add(chId);
+        if (older.isEmpty && _selectedChannelId == chId) {
+          messagesNotifier.value = List.unmodifiable(current);
+        }
+      }
       if (older.isNotEmpty) {
         _cacheMessageAuthorsInGuild(older);
         final existingIds = current.map((m) => m.id).toSet();
@@ -2303,10 +2351,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           }
 
           if (botId != null && msg.author.id != botId) {
-            final mentionsBot = msg.content.contains('<@$botId>') ||
-                msg.content.contains('<@!$botId>') ||
-                msg.referencedMessage?.author.id == botId ||
-                msg.guildId == null;
+            // Notifications tab = server mentions only (DMs badge the rail).
+            final mentionsBot =
+                msg.guildId != null && _messageMentionsBot(msg, botId);
             if (mentionsBot) {
               _notifications.insert(0, msg);
               if (_notifications.length > 50) {
@@ -2330,6 +2377,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             }
           } else {
             _unreadChannelIds.add(msg.channelId);
+            if (botId != null && _messageMentionsBot(msg, botId)) {
+              _mentionCounts[msg.channelId] = mentionCount(msg.channelId) + 1;
+            }
             _scheduleCoalescedNotify();
           }
         }

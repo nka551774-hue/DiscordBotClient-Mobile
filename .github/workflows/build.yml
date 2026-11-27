@@ -170,12 +170,17 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.9.0
+          tag_name: v1.9.1
           make_latest: true
-          name: "DiscordBotClient Mobile v1.9.0 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.9.1 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.9.0
+            ## DiscordBotClient Mobile v1.9.1
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.9.1 更新內容
+            - **未讀私訊與提及紅點**：收到私訊時，對方頭像會如官方出現在伺服器列最上方並顯示紅色未讀數；伺服器圖示、頻道右側與私訊列表顯示被提及次數（含 @提及、@everyone 與機器人身分組提及），閱讀後自動清除；私訊不再進入「通知」分頁。
+            - **對話開頭**：私訊與頻道捲動到最早的訊息時，顯示官方的大頭像、名稱與「這是您與 … 私人訊息紀錄的開頭」。
+            - **傳送任意檔案**：「+」選單新增「檔案」，可附加文件、音訊、影片、壓縮檔等。
 
             ### v1.9.0 更新內容
             - **多國語言**：設定 > 應用程式設定新增「Language / 語言 / 言語」，可切換中文、English、日本語（全介面約 400 個字串）。
