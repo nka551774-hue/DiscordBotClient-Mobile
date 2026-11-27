@@ -115,6 +115,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       ValueNotifier<List<DiscordMessage>>(const []);
   final ValueNotifier<bool> loadingMessagesNotifier =
       ValueNotifier<bool>(false);
+  /// Latest DM / mention to show as the official in-app top banner.
+  final ValueNotifier<DiscordMessage?> inAppNotificationNotifier =
+      ValueNotifier<DiscordMessage?>(null);
   final ValueNotifier<String?> typingBannerNotifier =
       ValueNotifier<String?>(null);
 
@@ -145,7 +148,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   /// DMs with unread messages, newest first (shown on the server rail).
   List<DiscordChannel> get unreadDmChannels {
     final list = _dmChannels.values
-        .where((c) => mentionCount(c.id) > 0)
+        .where((c) =>
+            mentionCount(c.id) > 0 || _unreadChannelIds.contains(c.id))
         .toList()
       ..sort((a, b) =>
           compareSnowflakes(b.lastMessageId ?? b.id, a.lastMessageId ?? a.id));
@@ -1109,7 +1113,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final cached = _messageCache[channelId];
-    if (cached != null) {
+    // A cache seeded only by live gateway messages (<50, start not reached)
+    // has no history yet, so fetch instead of showing just those messages.
+    if (cached != null &&
+        (cached.length >= 50 || _channelsAtStart.contains(channelId))) {
       _messageCache.remove(channelId);
       _messageCache[channelId] = cached;
       messagesNotifier.value = List.unmodifiable(cached);
@@ -2363,6 +2370,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             _unreadChannelIds.add(msg.channelId);
             if (botId != null && _messageMentionsBot(msg, botId)) {
               _mentionCounts[msg.channelId] = mentionCount(msg.channelId) + 1;
+              if (!msg.isSilentMessage) inAppNotificationNotifier.value = msg;
             }
             _scheduleCoalescedNotify();
           }
@@ -2539,6 +2547,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _teardownSession(clearActivePref: false);
     pingMsNotifier.dispose();
     voicePingMsNotifier.dispose();
+    inAppNotificationNotifier.dispose();
     speakingUserIdsNotifier.dispose();
     gatewayEventsCountNotifier.dispose();
     presenceRevisionNotifier.dispose();

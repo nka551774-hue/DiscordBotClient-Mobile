@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/discord_icons.dart';
 import '../widgets/embed_composer_sheet.dart';
 import '../widgets/guild_tools_sheet.dart';
+import '../widgets/in_app_notification_banner.dart';
 import '../widgets/message_tile.dart';
 import '../widgets/settings_sheet.dart';
 import '../widgets/user_profile_sheet.dart';
@@ -558,8 +559,31 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Future<void> _openFromBanner(DiscordMessage msg) async {
+    final ctrl = widget.controller;
+    setState(() => _homeTab = 0);
+    final gid = msg.guildId;
+    if (gid != null && ctrl.selectedGuildId != gid) {
+      await ctrl.selectGuild(gid);
+    }
+    _openChannelChat(msg.channelId, guildId: gid);
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Official in-app banner slides down over every screen.
+    return Stack(
+      children: [
+        Positioned.fill(child: _buildHome(context)),
+        InAppNotificationBanner(
+          controller: widget.controller,
+          onOpen: _openFromBanner,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHome(BuildContext context) {
     final ctrl = widget.controller;
     final p = DiscordPalette(oled: ctrl.ecoSettings.oledBlackMode);
     final size = MediaQuery.of(context).size;
@@ -954,7 +978,8 @@ class _HomeScreenState extends State<HomeScreen>
                                   right: -5,
                                   bottom: -5,
                                   child: _redCountBadge(
-                                      ctrl.mentionCount(dm.id), p.railBg),
+                                      ctrl.mentionCount(dm.id).clamp(1, 999),
+                                      p.railBg),
                                 ),
                               ],
                             ),
