@@ -254,7 +254,7 @@ class _RichParagraphState extends State<_RichParagraph> {
 
   /// One rendered emoji (incl. ZWJ sequences, skin tones, flags, keycaps).
   static final RegExp _unicodeEmojiRegex = RegExp(
-    r'(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]️?⃣)(?:️|‍|\p{Emoji_Modifier}|\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣)*',
+    r'\p{Regional_Indicator}{2}|(?:\p{Extended_Pictographic}|[0-9#*]️?⃣)(?:️|‍|\p{Emoji_Modifier}|\p{Extended_Pictographic}|⃣|[\u{E0020}-\u{E007F}])*',
     unicode: true,
   );
 
@@ -274,6 +274,15 @@ class _RichParagraphState extends State<_RichParagraph> {
     return noCustom.replaceAll(_unicodeEmojiRegex, '').trim().isEmpty;
   }
 
+  /// Twemoji file name rule: drop FE0F unless the sequence has a ZWJ.
+  static String _twemojiUrl(List<int> runes) {
+    final cps = runes.contains(0x200D)
+        ? runes
+        : runes.where((r) => r != 0xFE0F).toList();
+    final name = cps.map((r) => r.toRadixString(16)).join('-');
+    return 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@v15.1.0/assets/72x72/$name.png';
+  }
+
   /// Plain text with unicode emoji drawn bigger, like the official client.
   void _addPlain(
     List<InlineSpan> spans,
@@ -286,10 +295,31 @@ class _RichParagraphState extends State<_RichParagraph> {
       if (m.start > i) {
         spans.add(TextSpan(text: text.substring(i, m.start), style: style));
       }
-      spans.add(TextSpan(
-        text: m.group(0),
-        style: style.copyWith(fontSize: emojiFontSize, height: 1.15),
-      ));
+      final emoji = m.group(0)!;
+      final runes = emoji.runes.toList();
+      final emojiStyle =
+          style.copyWith(fontSize: emojiFontSize, height: 1.15);
+      // Text-presentation symbols (©, ™, ↔ … without FE0F) stay plain text.
+      if (runes.length == 1 && runes.first < 0x1F000) {
+        spans.add(TextSpan(text: emoji, style: emojiStyle));
+      } else {
+        // Official client draws unicode emoji as Twemoji images, so emoji the
+        // system font lacks (older Android) still render.
+        final size = emojiFontSize * 1.12;
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 1),
+            child: Image.network(
+              _twemojiUrl(runes),
+              width: size,
+              height: size,
+              cacheWidth: 72,
+              errorBuilder: (_, __, ___) => Text(emoji, style: emojiStyle),
+            ),
+          ),
+        ));
+      }
       i = m.end;
     }
     if (i < text.length) {
