@@ -48,6 +48,8 @@ String trf(String zhTemplate, List<Object?> args) {
 }
 
 const Map<String, String> _en = {
+  '提及': 'Mention',
+  '標示為未讀': 'Mark Unread',
   '標示為已讀': 'Mark As Read',
   '已複製連結': 'Link copied',
   '複製 ID': 'Copy ID',
@@ -460,6 +462,8 @@ const Map<String, String> _en = {
 };
 
 const Map<String, String> _ja = {
+  '提及': 'メンション',
+  '標示為未讀': '未読にする',
   '標示為已讀': '既読にする',
   '已複製連結': 'リンクをコピーしました',
   '複製 ID': 'ID をコピー',

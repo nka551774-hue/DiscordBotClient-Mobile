@@ -4034,6 +4034,12 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                     onNavigateToDm: widget.onEnsureCenterChat,
                                   ),
                                   onNavigateToDm: widget.onEnsureCenterChat,
+                                  onMention: (m) {
+                                    final name = m.authorDisplayName(guild);
+                                    _insertedMentions['@$name'] =
+                                        '<@${m.author.id}>';
+                                    _insertTextAtCursor('@$name ');
+                                  },
                                 );
                                 if (!firstUnread) return tile;
                                 return Column(
@@ -4212,6 +4218,28 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                         color: p.textSecondary, size: 23),
                   ),
                 ),
+                if (canSend && !_hasText) ...[
+                  const SizedBox(width: 8),
+                  // Official Apps button: opens the slash-command list.
+                  GestureDetector(
+                    onTap: () {
+                      _composerCtrl.text = '/';
+                      _composerCtrl.selection =
+                          const TextSelection.collapsed(offset: 1);
+                    },
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: p.inputBg,
+                        shape: BoxShape.circle,
+                      ),
+                      child: DiscordGlyph(DiscordGlyphType.apps,
+                          color: p.textSecondary, size: 19),
+                    ),
+                  ),
+                ],
                 const SizedBox(width: 8),
                 Expanded(
                   child: Container(

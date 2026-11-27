@@ -636,6 +636,18 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   void markChannelRead(String channelId) => _markChannelRead(channelId);
 
+  /// Official "Mark Unread": everything from [msg] on counts as unread again.
+  void markUnreadFrom(DiscordMessage msg) {
+    final before = BigInt.tryParse(msg.id);
+    if (before == null) return;
+    final lastRead = (before - BigInt.one).toString();
+    _lastReadMessageId[msg.channelId] = lastRead;
+    _unreadAnchor[msg.channelId] = lastRead;
+    _unreadChannelIds.add(msg.channelId);
+    _scheduleSaveReadState();
+    notifyListeners();
+  }
+
   void markGuildRead(String guildId) {
     final g = _guilds[guildId];
     if (g == null) return;

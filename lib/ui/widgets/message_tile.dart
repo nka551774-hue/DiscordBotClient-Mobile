@@ -37,6 +37,7 @@ class MessageTile extends StatefulWidget {
       onOpenUserProfile;
   final void Function(String userId)? onTapUserMention;
   final VoidCallback? onNavigateToDm;
+  final void Function(DiscordMessage msg)? onMention;
 
   const MessageTile({
     super.key,
@@ -59,6 +60,7 @@ class MessageTile extends StatefulWidget {
     required this.onOpenUserProfile,
     this.onTapUserMention,
     this.onNavigateToDm,
+    this.onMention,
   });
 
   @override
@@ -280,8 +282,21 @@ class _MessageTileState extends State<MessageTile> {
                         label: tr('回覆'),
                         onTap: () => widget.onReply(message),
                       ),
+                      if (widget.onMention != null && !isOwn)
+                        _sheetTile(
+                          ctx,
+                          icon: Icons.alternate_email_rounded,
+                          label: tr('提及'),
+                          onTap: () => widget.onMention!(message),
+                        ),
                     ],
                     [
+                      _sheetTile(
+                        ctx,
+                        icon: Icons.mark_chat_unread_outlined,
+                        label: tr('標示為未讀'),
+                        onTap: () => widget.controller.markUnreadFrom(message),
+                      ),
                       if (message.content.isNotEmpty)
                         _sheetTile(
                           ctx,
@@ -1115,7 +1130,33 @@ class _MessageTileState extends State<MessageTile> {
                                               ),
                                             ),
                                           );
-                                        }).toList(),
+                                        }).followedBy([
+                                          // Official "add reaction" pill.
+                                          InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            onTap: () =>
+                                                _showCustomEmojiPicker(context),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: palette.cardBg,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
+                                                    color: palette.border),
+                                              ),
+                                              child: Icon(
+                                                Icons.add_reaction_outlined,
+                                                size: 17,
+                                                color: palette.textSecondary,
+                                              ),
+                                            ),
+                                          ),
+                                        ]).toList(),
                                       ),
                                     ),
                                 ],
