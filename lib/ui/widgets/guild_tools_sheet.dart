@@ -111,14 +111,29 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     DiscordGuild guild,
     List<DiscordMember> members,
   ) {
+    final ctrl = widget.controller;
+    final splitByPresence = ctrl.hasPresenceData;
     final buckets = <String, _RoleGroupBucket>{};
     final ungrouped = _RoleGroupBucket(
       id: 'members',
-      title: '成員',
+      title: splitByPresence ? '線上' : '成員',
       position: -1,
     );
+    final offline = _RoleGroupBucket(
+      id: 'offline',
+      title: '離線',
+      position: -2,
+    );
+    final selfId = ctrl.activeAccount?.id;
 
     for (final m in members) {
+      final isOnline = m.user.id == selfId
+          ? ctrl.botStatus != 'invisible'
+          : ctrl.presenceStatusOf(m.user.id) != 'offline';
+      if (splitByPresence && !isOnline) {
+        offline.members.add(m);
+        continue;
+      }
       final hoistId = m.resolveHoistRoleId(guild.roles);
       if (hoistId != null && guild.roles.containsKey(hoistId)) {
         final r = guild.roles[hoistId]!;
@@ -147,6 +162,11 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       ungrouped.members.sort((a, b2) =>
           a.effectiveName.toLowerCase().compareTo(b2.effectiveName.toLowerCase()));
       sorted.add(ungrouped);
+    }
+    if (offline.members.isNotEmpty) {
+      offline.members.sort((a, b2) =>
+          a.effectiveName.toLowerCase().compareTo(b2.effectiveName.toLowerCase()));
+      sorted.add(offline);
     }
     return sorted;
   }
@@ -283,6 +303,22 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                 m.effectiveName.toLowerCase().contains(q) ||
                 m.user.username.toLowerCase().contains(q))
             .toList();
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.controller.presenceRevisionNotifier,
+      builder: (context, _, __) => _buildPanel(context, p, channel, guild,
+          perms, canManageChannels, visibleMembers),
+    );
+  }
+
+  Widget _buildPanel(
+    BuildContext context,
+    DiscordPalette p,
+    DiscordChannel? channel,
+    DiscordGuild? guild,
+    BigInt perms,
+    bool canManageChannels,
+    List<DiscordMember> visibleMembers,
+  ) {
     final groupedBuckets = (guild != null && visibleMembers.isNotEmpty)
         ? _groupMembersByHoistedRole(guild, visibleMembers)
         : const <_RoleGroupBucket>[];
@@ -546,10 +582,20 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
     final nameColor =
         roleColorInt != null ? Color(0xFF000000 | roleColorInt) : p.textPrimary;
 
-    final acc = widget.controller.activeAccount;
+    final ctrl = widget.controller;
+    final acc = ctrl.activeAccount;
     final isSelf = acc != null && acc.id == user.id;
+    final status = isSelf ? ctrl.botStatus : ctrl.presenceStatusOf(user.id);
+    final showStatus = isSelf || ctrl.hasPresenceData;
+    final isOffline =
+        showStatus && (status == 'offline' || status == 'invisible');
+    final activity = isSelf
+        ? (ctrl.botActivityName.isNotEmpty ? ctrl.botActivityName : null)
+        : ctrl.presenceActivityOf(user.id);
 
-    return InkWell(
+    return Opacity(
+      opacity: isOffline && !isSelf ? 0.4 : 1.0,
+      child: InkWell(
       borderRadius: BorderRadius.circular(8),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
@@ -566,12 +612,12 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                         : user.avatarUrl(size: 64),
                   ),
                 ),
-                if (isSelf)
+                if (showStatus && !isOffline)
                   Positioned(
                     right: -2,
                     bottom: -2,
                     child: DiscordStatusBadge(
-                      status: widget.controller.botStatus,
+                      status: status,
                       size: 12,
                       borderColor: p.sidebarBg,
                       borderWidth: 2.5,
@@ -580,6 +626,13 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
               ],
             ),
             const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
             Flexible(
               child: Text(
                 displayName,
@@ -621,6 +674,18 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                 ),
               ),
             ],
+                    ],
+                  ),
+                  if (activity != null && activity.isNotEmpty)
+                    Text(
+                      activity,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: p.textMuted, fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -634,6 +699,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
           widget.onClosePanel?.call();
           widget.onNavigateToDm?.call();
         },
+      ),
       ),
     );
   }

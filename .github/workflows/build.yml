@@ -170,12 +170,15 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.7.1
+          tag_name: v1.7.2
           make_latest: true
-          name: "DiscordBotClient Mobile v1.7.1 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.7.2 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.7.1
+            ## DiscordBotClient Mobile v1.7.2
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.7.2 更新內容 (成員線上狀態)
+            - **成員列表線上 / 離線分組**：追蹤 Gateway `GUILD_CREATE` presences 與 `PRESENCE_UPDATE`，依官方規則將線上成員依置頂身分組分組、其餘歸入「線上」，離線成員集中於「離線」並淡化顯示；每位成員顯示狀態點與自訂狀態 / 正在玩等活動文字（需於「設定」開啟 Presence Intent，並於 Developer Portal 啟用 PRESENCE INTENT）。
 
             ### v1.7.1 更新內容 (聊天標題列與成員列表)
             - **聊天標題列**：頻道圖示改用與頻道列表相同的 `#` / 公告 / 討論串圖示，名稱後加上官方「>」提示點擊可開啟頻道詳情，成員按鈕改為官方雙人圖示。

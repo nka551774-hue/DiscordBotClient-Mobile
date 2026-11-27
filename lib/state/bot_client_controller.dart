@@ -211,6 +211,69 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   bool _loadingOlderMessages = false;
   bool get loadingOlderMessages => _loadingOlderMessages;
 
+  // Member presences from GUILD_CREATE / PRESENCE_UPDATE (needs GUILD_PRESENCES intent).
+  // shortcut: keyed by user id across guilds (status is global per user on Discord).
+  final Map<String, String> _presenceStatus = <String, String>{};
+  final Map<String, String> _presenceActivity = <String, String>{};
+  final ValueNotifier<int> presenceRevisionNotifier = ValueNotifier<int>(0);
+  bool get hasPresenceData => _presenceStatus.isNotEmpty;
+  String presenceStatusOf(String userId) =>
+      _presenceStatus[userId] ?? 'offline';
+  String? presenceActivityOf(String userId) => _presenceActivity[userId];
+
+  static String? _activityText(dynamic activities) {
+    if (activities is! List) return null;
+    for (final a in activities) {
+      if (a is! Map) continue;
+      final type = a['type'];
+      final name = a['name']?.toString() ?? '';
+      if (type == 4) {
+        final st = a['state']?.toString() ?? '';
+        if (st.isNotEmpty) return st;
+        continue;
+      }
+      if (name.isEmpty) continue;
+      switch (type) {
+        case 0:
+          return '正在玩 $name';
+        case 1:
+          return '正在直播 $name';
+        case 2:
+          return '正在聽 $name';
+        case 3:
+          return '正在觀看 $name';
+        case 5:
+          return '正在競爭 $name';
+      }
+    }
+    return null;
+  }
+
+  /// Returns true when the stored presence changed.
+  bool _applyPresence(dynamic p) {
+    if (p is! Map) return false;
+    final user = p['user'];
+    final uid = user is Map ? user['id']?.toString() : null;
+    if (uid == null || uid.isEmpty) return false;
+    final status = p['status']?.toString() ?? 'offline';
+    final activity = _activityText(p['activities']);
+    final prevStatus = _presenceStatus[uid];
+    final prevActivity = _presenceActivity[uid];
+    if (status == 'offline' || status == 'invisible') {
+      _presenceStatus.remove(uid);
+      _presenceActivity.remove(uid);
+    } else {
+      _presenceStatus[uid] = status;
+      if (activity != null) {
+        _presenceActivity[uid] = activity;
+      } else {
+        _presenceActivity.remove(uid);
+      }
+    }
+    return prevStatus != _presenceStatus[uid] ||
+        prevActivity != _presenceActivity[uid];
+  }
+
   // Bot Presence state (default activityType = 4 Custom Status)
   String _botStatus = 'online';
   String get botStatus => _botStatus;
@@ -457,6 +520,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     voicePingMsNotifier.value = null;
     speakingUserIdsNotifier.value = const <String>{};
     _guilds.clear();
+    _presenceStatus.clear();
+    _presenceActivity.clear();
+    presenceRevisionNotifier.value++;
     _dmChannels.clear();
     _messageCache.clear();
     _userProfileCache.clear();
@@ -1922,6 +1988,14 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               : parsed;
           _guilds[parsed.id] = mergedGuild;
 
+          final presences = data['presences'];
+          if (presences is List && presences.isNotEmpty) {
+            for (final pr in presences) {
+              _applyPresence(pr);
+            }
+            presenceRevisionNotifier.value++;
+          }
+
           // If bot is already connected in a voice channel on GUILD_CREATE, sync state
           final botId = _activeAccount?.id;
           if (botId != null && mergedGuild.voiceStates.containsKey(botId)) {
@@ -1947,6 +2021,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             _scheduleCoalescedNotify();
           }
         }
+        break;
+
+      case 'PRESENCE_UPDATE':
+        if (_applyPresence(data)) presenceRevisionNotifier.value++;
         break;
 
       case 'VOICE_STATE_UPDATE':
@@ -2358,6 +2436,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     voicePingMsNotifier.dispose();
     speakingUserIdsNotifier.dispose();
     gatewayEventsCountNotifier.dispose();
+    presenceRevisionNotifier.dispose();
     messagesNotifier.dispose();
     loadingMessagesNotifier.dispose();
     typingBannerNotifier.dispose();
