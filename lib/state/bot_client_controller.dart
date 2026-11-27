@@ -161,6 +161,44 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   bool isAtChannelStart(String channelId) =>
       _channelsAtStart.contains(channelId);
 
+  /// Message text with <@id>, <@&id>, <#id> and custom emoji made readable
+  /// (notifications, banners).
+  String plainPreview(DiscordMessage msg) {
+    final guild = msg.guildId == null ? null : _guilds[msg.guildId];
+    final mentioned = <String, String>{};
+    final raw = msg.rawJson?['mentions'];
+    if (raw is List) {
+      for (final u in raw.whereType<Map<String, dynamic>>()) {
+        final member = u['member'];
+        final nick = member is Map ? member['nick'] as String? : null;
+        mentioned[u['id'].toString()] = (nick != null && nick.isNotEmpty)
+            ? nick
+            : DiscordUser.fromJson(u).displayName;
+      }
+    }
+    final text = msg.content
+        .replaceAllMapped(RegExp(r'<@!?(\d+)>'), (m) {
+          final id = m.group(1)!;
+          final name = mentioned[id] ??
+              guild?.cachedMembers[id]?.effectiveName ??
+              getCachedUser(id)?.displayName ??
+              id;
+          return '@$name';
+        })
+        .replaceAllMapped(RegExp(r'<@&(\d+)>'),
+            (m) => '@${guild?.roles[m.group(1)!]?.name ?? 'role'}')
+        .replaceAllMapped(RegExp(r'<#(\d+)>'),
+            (m) => '#${findChannelById(m.group(1)!)?.name ?? 'channel'}')
+        .replaceAllMapped(RegExp(r'<a?:(\w+):\d+>'), (m) => ':${m.group(1)}:')
+        .replaceAllMapped(RegExp(r'<t:(\d+)(?::\w)?>'), (m) {
+          final t = DateTime.fromMillisecondsSinceEpoch(
+              int.parse(m.group(1)!) * 1000);
+          return '${t.year}/${t.month}/${t.day} ${t.hour}:${t.minute.toString().padLeft(2, '0')}';
+        })
+        .trim();
+    return text.isEmpty ? tr('[Embed / 附件]') : text;
+  }
+
   bool _messageMentionsBot(DiscordMessage msg, String botId) {
     if (msg.guildId == null) return true;
     final raw = msg.rawJson;
@@ -1157,6 +1195,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _cacheMessageAuthorsInGuild(Iterable<DiscordMessage> msgs) {
     for (final m in msgs) {
+      // Webhooks are not members (and reuse one id for many names/avatars).
+      if (m.isWebhook) continue;
       final gId = m.guildId ?? _selectedGuildId;
       if (gId != null && _guilds.containsKey(gId)) {
         final g = _guilds[gId]!;

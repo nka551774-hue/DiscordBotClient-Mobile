@@ -170,12 +170,17 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.9.4
+          tag_name: v1.9.5
           make_latest: true
-          name: "DiscordBotClient Mobile v1.9.4 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.9.5 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.9.4
+            ## DiscordBotClient Mobile v1.9.5
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.9.5 更新內容
+            - **@ 提及選單**：在聊天輸入 @ 會如官方列出成員（含伺服器搜尋）、身分組與 @everyone / @here，點選後以名稱顯示並送出為真正的提及。
+            - **通知顯示名稱**：通知分頁與上方通知卡把 `<@使用者ID>`、`<@&身分組>`、`<#頻道>` 轉成名稱顯示。
+            - **Webhook**：Webhook 訊息不再被當成伺服器成員（成員列表不再先閃出 Webhook），不同名稱 / 頭像的 Webhook 訊息不再被合併成同一組而導致頭像跳動。
 
             ### v1.9.4 更新內容
             - **Emoji 顯示**：訊息中的 Unicode 表情改用官方同款 Twemoji 圖片顯示，手機字型沒有的新表情（例如較舊的 Android）不再顯示成方框；國旗連續排列也能正確分開顯示。

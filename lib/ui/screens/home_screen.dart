@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -406,9 +407,7 @@ class _HomeScreenState extends State<HomeScreen>
                                       ),
                                     ),
                                     Text(
-                                      msg.content.isEmpty
-                                          ? tr('[附件 / Embed]')
-                                          : msg.content,
+                                      ctrl.plainPreview(msg),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
@@ -2501,6 +2500,13 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
   String _emojiPrefix = '';
   int _emojiTokenStart = -1;
   bool _triggeredEmojiHydration = false;
+  // @mention autocomplete: query after '@', its start, REST search results,
+  // and inserted "@name" tokens to convert to <@id> on send.
+  String? _mentionQuery;
+  int _mentionStart = -1;
+  List<DiscordMember> _mentionRemote = const [];
+  Timer? _mentionSearchTimer;
+  final Map<String, String> _insertedMentions = <String, String>{};
 
   void _insertTextAtCursor(String chunk) {
     final text = _composerCtrl.text;
@@ -2529,6 +2535,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
   void dispose() {
     _scrollCtrl.removeListener(_onScroll);
     _composerCtrl.removeListener(_onComposerChanged);
+    _mentionSearchTimer?.cancel();
     _scrollCtrl.dispose();
     _composerCtrl.dispose();
     super.dispose();
@@ -2560,6 +2567,18 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
       }
     }
 
+    final mentionMatch =
+        RegExp(r'(?:^|\s)@([^\s@<>]{0,32})$').firstMatch(beforeCursor);
+    final nextMentionQuery = mentionMatch?.group(1);
+    if (nextMentionQuery != _mentionQuery) {
+      _mentionQuery = nextMentionQuery;
+      _mentionStart = nextMentionQuery == null
+          ? -1
+          : cursor - nextMentionQuery.length - 1; // points to '@'
+      _scheduleMentionSearch();
+      setState(() {});
+    }
+
     if (nonEmpty != _hasText ||
         nextSlash != _slashPrefix ||
         nextEmojiPrefix != _emojiPrefix ||
@@ -2571,6 +2590,158 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
         _emojiTokenStart = nextEmojiStart;
       });
     }
+  }
+
+  void _scheduleMentionSearch() {
+    _mentionSearchTimer?.cancel();
+    final q = _mentionQuery;
+    final ctrl = widget.controller;
+    final gid = ctrl.selectedGuildId;
+    final rest = ctrl.rest;
+    if (q == null || q.isEmpty || gid == null || rest == null) {
+      _mentionRemote = const [];
+      return;
+    }
+    _mentionSearchTimer = Timer(const Duration(milliseconds: 280), () async {
+      try {
+        final res = await rest.searchGuildMembers(gid, q);
+        if (mounted && _mentionQuery == q) {
+          setState(() => _mentionRemote = res);
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _insertMention(String label, String token) {
+    final raw = _composerCtrl.text;
+    final sel = _composerCtrl.selection;
+    final end = (sel.isValid &&
+            sel.baseOffset >= _mentionStart &&
+            sel.baseOffset <= raw.length)
+        ? sel.baseOffset
+        : raw.length;
+    final shown = '@$label';
+    if (token != shown) _insertedMentions[shown] = token;
+    final replacement = '$shown ';
+    _composerCtrl.value = TextEditingValue(
+      text: raw.replaceRange(_mentionStart, end, replacement),
+      selection:
+          TextSelection.collapsed(offset: _mentionStart + replacement.length),
+    );
+  }
+
+  /// "@name" tokens picked from the list become real <@id> mentions.
+  String _applyMentions(String text) {
+    final keys = _insertedMentions.keys.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    for (final k in keys) {
+      text = text.replaceAll(k, _insertedMentions[k]!);
+    }
+    return text;
+  }
+
+  Widget _buildMentionAutocompleteBar(DiscordPalette p) {
+    final q = _mentionQuery;
+    if (q == null || _mentionStart < 0) return const SizedBox.shrink();
+    final ctrl = widget.controller;
+    final guild = ctrl.selectedGuild;
+    final channel = ctrl.selectedChannel;
+    final lq = q.toLowerCase();
+    bool hit(String? s) => s != null && s.toLowerCase().contains(lq);
+
+    final rows = <Widget>[];
+    Widget row(Widget leading, String title, String? subtitle,
+            VoidCallback onTap) =>
+        ListTile(
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          leading: leading,
+          title: Text(title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: p.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+          trailing: subtitle == null
+              ? null
+              : Text(subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: p.textMuted, fontSize: 12)),
+          onTap: onTap,
+        );
+
+    final users = <String, DiscordMember>{};
+    if (guild != null) {
+      for (final m in [..._mentionRemote, ...guild.cachedMembers.values]) {
+        if (users.length >= 8) break;
+        if (users.containsKey(m.user.id)) continue;
+        if (q.isEmpty ||
+            hit(m.nick) ||
+            hit(m.user.username) ||
+            hit(m.user.globalName)) {
+          users[m.user.id] = m;
+        }
+      }
+    } else if (channel != null) {
+      for (final u in channel.recipients) {
+        if (q.isEmpty || hit(u.username) || hit(u.globalName)) {
+          users[u.id] = DiscordMember(user: u);
+        }
+      }
+    }
+    for (final m in users.values) {
+      rows.add(row(
+        CircleAvatar(
+          radius: 14,
+          backgroundImage: NetworkImage(m.user.avatarUrl(size: 64)),
+        ),
+        m.effectiveName,
+        m.user.username,
+        () => _insertMention(m.effectiveName, '<@${m.user.id}>'),
+      ));
+    }
+    if (guild != null) {
+      final roles = guild.roles.values
+          .where((r) => r.name != '@everyone' && (q.isEmpty || hit(r.name)))
+          .take(4);
+      for (final r in roles) {
+        rows.add(row(
+          Icon(Icons.alternate_email_rounded,
+              size: 22,
+              color: r.color != 0 ? Color(0xFF000000 | r.color) : p.textMuted),
+          '@${r.name}',
+          tr('身分組'),
+          () => _insertMention(r.name, '<@&${r.id}>'),
+        ));
+      }
+      for (final e in const ['everyone', 'here']) {
+        if (q.isEmpty || e.startsWith(lq)) {
+          rows.add(row(
+            Icon(Icons.campaign_rounded, size: 22, color: p.textMuted),
+            '@$e',
+            null,
+            () => _insertMention(e, '@$e'),
+          ));
+        }
+      }
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      constraints: const BoxConstraints(maxHeight: 260),
+      decoration: BoxDecoration(
+        color: p.sidebarBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.border),
+      ),
+      child: ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        children: rows,
+      ),
+    );
   }
 
   void _onScroll() {
@@ -2623,7 +2794,9 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
     List<DiscordEmbed>? embeds,
     String? overrideContent,
   }) async {
-    final text = (overrideContent ?? _composerCtrl.text).trim();
+    final text = overrideContent?.trim() ??
+        _applyMentions(_composerCtrl.text).trim();
+    if (overrideContent == null) _insertedMentions.clear();
 
     if (_editingTarget != null) {
       if (text.isEmpty) return;
@@ -3420,6 +3593,11 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                   showDateDivider = !sameDay;
                                   if (sameDay &&
                                       older.author.id == msg.author.id &&
+                                      (!msg.isWebhook ||
+                                          (older.author.username ==
+                                                  msg.author.username &&
+                                              older.author.avatar ==
+                                                  msg.author.avatar)) &&
                                       msg.referencedMessage == null &&
                                       msg.timestamp
                                               .difference(older.timestamp)
@@ -3660,6 +3838,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
         // Built-in Slash Command & :shortcode Emoji Autocomplete Bars
         _buildSlashAutocompleteBar(p),
         _buildEmojiAutocompleteBar(p),
+        _buildMentionAutocompleteBar(p),
 
         // Replying / Editing / Attachment Bar
         if (_replyTarget != null ||

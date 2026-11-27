@@ -1567,6 +1567,7 @@ class DiscordMessage {
 
   bool get isComponentsV2 => (flags & (1 << 15)) != 0;
   bool get isSilentMessage => (flags & (1 << 12)) != 0;
+  bool get isWebhook => rawJson?['webhook_id'] != null;
 
   String authorDisplayName(DiscordGuild? guild) {
     if (memberNick != null && memberNick!.isNotEmpty) return memberNick!;

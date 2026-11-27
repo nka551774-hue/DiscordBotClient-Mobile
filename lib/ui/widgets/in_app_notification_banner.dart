@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../l10n/strings.dart';
 import '../../models/discord_models.dart';
 import '../../state/bot_client_controller.dart';
 
@@ -59,21 +58,6 @@ class _InAppNotificationBannerState extends State<InAppNotificationBanner> {
   void _hide() {
     _hideTimer?.cancel();
     if (mounted) setState(() => _visible = false);
-  }
-
-  String _preview(DiscordMessage msg) {
-    final ctrl = widget.controller;
-    var text = msg.content
-        .replaceAllMapped(RegExp(r'<@!?(\d+)>'), (m) {
-          final u = ctrl.getCachedUser(m.group(1)!);
-          return '@${u?.displayName ?? 'user'}';
-        })
-        .replaceAllMapped(RegExp(r'<a?:(\w+):\d+>'), (m) => ':${m.group(1)}:')
-        .replaceAllMapped(RegExp(r'<#(\d+)>'),
-            (m) => '#${ctrl.findChannelById(m.group(1)!)?.name ?? ''}')
-        .trim();
-    if (text.isEmpty) text = tr('[Embed / 附件]');
-    return text;
   }
 
   @override
@@ -152,7 +136,7 @@ class _InAppNotificationBannerState extends State<InAppNotificationBanner> {
                           ),
                         const SizedBox(height: 2),
                         Text(
-                          _preview(msg),
+                          widget.controller.plainPreview(msg),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
