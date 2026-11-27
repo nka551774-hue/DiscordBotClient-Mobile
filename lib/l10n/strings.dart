@@ -48,6 +48,9 @@ String trf(String zhTemplate, List<Object?> args) {
 }
 
 const Map<String, String> _en = {
+  '目前沒有通知': 'No notifications yet',
+  '有人在伺服器中提及你時，會顯示在這裡。': 'When someone mentions you in a server, it will show up here.',
+  '收到的私人訊息會顯示在這裡。': 'Your direct messages will show up here.',
   '提及': 'Mention',
   '標示為未讀': 'Mark Unread',
   '標示為已讀': 'Mark As Read',
@@ -462,6 +465,9 @@ const Map<String, String> _en = {
 };
 
 const Map<String, String> _ja = {
+  '目前沒有通知': 'まだ通知はありません',
+  '有人在伺服器中提及你時，會顯示在這裡。': 'サーバーで誰かがあなたをメンションすると、ここに表示されます。',
+  '收到的私人訊息會顯示在這裡。': '受け取ったダイレクトメッセージはここに表示されます。',
   '提及': 'メンション',
   '標示為未讀': '未読にする',
   '標示為已讀': '既読にする',

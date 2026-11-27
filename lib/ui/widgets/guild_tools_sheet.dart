@@ -322,16 +322,9 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
   List<DiscordMessage> get _loadedMessages =>
       widget.controller.messagesNotifier.value;
 
-  Widget _emptyTab(DiscordPalette p, String text) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: p.textMuted, fontSize: 13.5),
-          ),
-        ),
-      );
+  Widget _emptyTab(DiscordPalette p, String text,
+          {IconData icon = Icons.search_rounded}) =>
+      DiscordEmptyState(icon: Icon(icon), title: text);
 
   Widget _messagePreviewTile(DiscordPalette p, DiscordMessage m) => ListTile(
         contentPadding: EdgeInsets.zero,
@@ -515,7 +508,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
         for (final a in m.attachments)
           if (a.isImage) a,
     ];
-    if (imgs.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有媒體'));
+    if (imgs.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有媒體'), icon: Icons.image_outlined);
     return GridView.builder(
       padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -548,7 +541,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
 
   Widget _pinsTab(DiscordPalette p, DiscordChannel channel) {
     final rest = widget.controller.rest;
-    if (rest == null) return _emptyTab(p, tr('尚未連線'));
+    if (rest == null) return _emptyTab(p, tr('尚未連線'), icon: Icons.wifi_off_rounded);
     if (_pinsFor != channel.id || _pinsFuture == null) {
       _pinsFor = channel.id;
       _pinsFuture = rest.getPinnedMessages(channel.id);
@@ -560,7 +553,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
           return const Center(child: CircularProgressIndicator());
         }
         final pins = snap.data ?? const <DiscordMessage>[];
-        if (pins.isEmpty) return _emptyTab(p, tr('此頻道目前沒有任何釘選訊息'));
+        if (pins.isEmpty) return _emptyTab(p, tr('此頻道目前沒有任何釘選訊息'), icon: Icons.push_pin_outlined);
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: pins.length,
@@ -577,7 +570,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
       for (final m in _loadedMessages)
         for (final mt in re.allMatches(m.content)) mt.group(0)!,
     ];
-    if (links.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有連結'));
+    if (links.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有連結'), icon: Icons.link_rounded);
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       itemCount: links.length,
@@ -606,7 +599,7 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
         for (final a in m.attachments)
           if (!a.isImage) a,
     ];
-    if (files.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有檔案'));
+    if (files.isEmpty) return _emptyTab(p, tr('已載入的訊息中沒有檔案'), icon: Icons.insert_drive_file_outlined);
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       itemCount: files.length,

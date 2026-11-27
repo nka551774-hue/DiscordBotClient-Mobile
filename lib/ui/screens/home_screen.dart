@@ -322,23 +322,10 @@ class _HomeScreenState extends State<HomeScreen>
           Divider(height: 1, color: p.border),
           Expanded(
             child: items.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.notifications_none_rounded,
-                            size: 46, color: p.textMuted),
-                        const SizedBox(height: 10),
-                        Text(
-                          tr('目前沒有任何提及或私訊通知'),
-                          style: TextStyle(
-                            color: p.textSecondary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
+                ? DiscordEmptyState(
+                    icon: const Icon(Icons.notifications_none_rounded),
+                    title: tr('目前沒有通知'),
+                    body: tr('有人在伺服器中提及你時，會顯示在這裡。'),
                   )
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(vertical: 6),
@@ -2582,11 +2569,11 @@ class _HomeScreenState extends State<HomeScreen>
         const SizedBox(height: 6),
         Expanded(
           child: dms.isEmpty
-              ? Center(
-                  child: Text(
-                    tr('尚無私人訊息'),
-                    style: TextStyle(color: p.textMuted, fontSize: 14),
-                  ),
+              ? DiscordEmptyState(
+                  icon: DiscordGlyph(DiscordGlyphType.chat,
+                      size: 40, color: p.textMuted),
+                  title: tr('尚無私人訊息'),
+                  body: tr('收到的私人訊息會顯示在這裡。'),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),

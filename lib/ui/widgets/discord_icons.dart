@@ -551,3 +551,64 @@ class _GlyphPainter extends CustomPainter {
   bool shouldRepaint(covariant _GlyphPainter old) =>
       old.type != type || old.color != color;
 }
+
+/// Official empty state: illustration disc, bold title, muted body.
+class DiscordEmptyState extends StatelessWidget {
+  final Widget icon;
+  final String title;
+  final String? body;
+
+  const DiscordEmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = DiscordPalette(
+        oled: Theme.of(context).scaffoldBackgroundColor == Colors.black);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: p.elevatedBg,
+                shape: BoxShape.circle,
+              ),
+              child: IconTheme(
+                data: IconThemeData(color: p.textMuted, size: 44),
+                child: icon,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: p.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            if (body != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                body!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: p.textMuted, fontSize: 14, height: 1.35),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
