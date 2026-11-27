@@ -237,7 +237,7 @@ class _RichParagraphState extends State<_RichParagraph> {
   final Set<int> _revealedSpoilers = <int>{};
 
   static final RegExp _tokenRegex = RegExp(
-    r'(\|\|.+?\|\|)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\))|(\[[^\[\]\n]+\]\(<?https?://[^\s)>]+>?\))|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
+    r'(\|\|.+?\|\|)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\))|(\[[^\[\]\n]+\]\(<?https?://[^\s)>]+>?\))|(\*\*\*.+?\*\*\*)|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
   );
 
   static final RegExp _fakeNitroHyperlinkRegex = RegExp(
@@ -296,74 +296,19 @@ class _RichParagraphState extends State<_RichParagraph> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final baseStyle = TextStyle(
-      color: widget.overrideTextColor ?? widget.palette.textPrimary,
-      fontSize: widget.fontSize,
-      height: 1.36,
-    );
-    final isJumbo = _isJumboOnly(widget.text);
-    final emojiDisplaySize = isJumbo ? 48.0 : 22.0;
-    final emojiFetchSize = isJumbo ? 96 : 48;
-    final unicodeEmojiFont = isJumbo ? 42.0 : widget.fontSize * 1.3;
+  // Spoiler index across one build (nested formatting recurses via _inline).
+  int _spoilerCounter = 0;
 
-    final lines = widget.text.split('\n');
-    final spans = <InlineSpan>[];
-    int spoilerCounter = 0;
-
-    for (int i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      TextStyle lineStyle = baseStyle;
-
-      if (line.startsWith('### ')) {
-        line = line.substring(4);
-        lineStyle = baseStyle.copyWith(
-          fontSize: widget.fontSize + 2,
-          fontWeight: FontWeight.w700,
-        );
-      } else if (line.startsWith('## ')) {
-        line = line.substring(3);
-        lineStyle = baseStyle.copyWith(
-          fontSize: widget.fontSize + 4,
-          fontWeight: FontWeight.w700,
-        );
-      } else if (line.startsWith('# ')) {
-        line = line.substring(2);
-        lineStyle = baseStyle.copyWith(
-          fontSize: widget.fontSize + 6,
-          fontWeight: FontWeight.w800,
-        );
-      } else if (line.startsWith('-# ')) {
-        line = line.substring(3);
-        lineStyle = baseStyle.copyWith(
-          fontSize: widget.fontSize - 2.5,
-          color: widget.palette.textMuted,
-        );
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        spans.add(TextSpan(text: '  •  ', style: lineStyle));
-        line = line.substring(2);
-      } else if (line.startsWith('>>> ')) {
-        spans.add(TextSpan(
-          text: '▎ ',
-          style: lineStyle.copyWith(
-            color: widget.palette.textMuted,
-            fontWeight: FontWeight.w900,
-          ),
-        ));
-        line = line.substring(4);
-      } else if (line.startsWith('> ')) {
-        spans.add(TextSpan(
-          text: '▎ ',
-          style: lineStyle.copyWith(
-            color: widget.palette.textMuted,
-            fontWeight: FontWeight.w900,
-          ),
-        ));
-        line = line.substring(2);
-        lineStyle = lineStyle.copyWith(color: widget.palette.textSecondary);
-      }
-
+  /// Tokenises one line; bold / italic / underline / strike recurse so emoji,
+  /// mentions and links inside formatting (common in embeds) still render.
+  void _inline(
+    String line,
+    TextStyle lineStyle,
+    List<InlineSpan> spans,
+    double emojiDisplaySize,
+    int emojiFetchSize,
+    double unicodeEmojiFont,
+  ) {
       int idx = 0;
       for (final match in _tokenRegex.allMatches(line)) {
         if (match.start > idx) {
@@ -373,7 +318,7 @@ class _RichParagraphState extends State<_RichParagraph> {
 
         final token = match.group(0)!;
         if (token.startsWith('||') && token.endsWith('||')) {
-          final currentSpoilerIdx = spoilerCounter++;
+          final currentSpoilerIdx = _spoilerCounter++;
           final revealed = widget.revealAllSpoilers ||
               _revealedSpoilers.contains(currentSpoilerIdx);
           final inner = token.substring(2, token.length - 2);
@@ -406,33 +351,26 @@ class _RichParagraphState extends State<_RichParagraph> {
         } else if (token.length > 6 &&
             token.startsWith('***') &&
             token.endsWith('***')) {
-          spans.add(TextSpan(
-            text: token.substring(3, token.length - 3),
-            style: lineStyle.copyWith(
+          _inline(
+            token.substring(3, token.length - 3),
+            lineStyle.copyWith(
               fontWeight: FontWeight.w700,
               fontStyle: FontStyle.italic,
             ),
-          ));
+            spans, emojiDisplaySize, emojiFetchSize, unicodeEmojiFont,
+          );
         } else if (token.startsWith('**') && token.endsWith('**')) {
-          spans.add(TextSpan(
-            text: token.substring(2, token.length - 2),
-            style: lineStyle.copyWith(fontWeight: FontWeight.w700),
-          ));
+          _inline(token.substring(2, token.length - 2), lineStyle.copyWith(fontWeight: FontWeight.w700),
+              spans, emojiDisplaySize, emojiFetchSize, unicodeEmojiFont);
         } else if (token.startsWith('__') && token.endsWith('__')) {
-          spans.add(TextSpan(
-            text: token.substring(2, token.length - 2),
-            style: lineStyle.copyWith(decoration: TextDecoration.underline),
-          ));
+          _inline(token.substring(2, token.length - 2), lineStyle.copyWith(decoration: TextDecoration.underline),
+              spans, emojiDisplaySize, emojiFetchSize, unicodeEmojiFont);
         } else if (token.startsWith('~~') && token.endsWith('~~')) {
-          spans.add(TextSpan(
-            text: token.substring(2, token.length - 2),
-            style: lineStyle.copyWith(decoration: TextDecoration.lineThrough),
-          ));
+          _inline(token.substring(2, token.length - 2), lineStyle.copyWith(decoration: TextDecoration.lineThrough),
+              spans, emojiDisplaySize, emojiFetchSize, unicodeEmojiFont);
         } else if (token.startsWith('*') && token.endsWith('*')) {
-          spans.add(TextSpan(
-            text: token.substring(1, token.length - 1),
-            style: lineStyle.copyWith(fontStyle: FontStyle.italic),
-          ));
+          _inline(token.substring(1, token.length - 1), lineStyle.copyWith(fontStyle: FontStyle.italic),
+              spans, emojiDisplaySize, emojiFetchSize, unicodeEmojiFont);
         } else if (token.startsWith('<:') || token.startsWith('<a:')) {
           final animated = token.startsWith('<a:');
           final parts = token.substring(1, token.length - 1).split(':');
@@ -647,6 +585,78 @@ class _RichParagraphState extends State<_RichParagraph> {
       if (idx < line.length) {
         _addPlain(spans, line.substring(idx), lineStyle, unicodeEmojiFont);
       }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = TextStyle(
+      color: widget.overrideTextColor ?? widget.palette.textPrimary,
+      fontSize: widget.fontSize,
+      height: 1.36,
+    );
+    final isJumbo = _isJumboOnly(widget.text);
+    final emojiDisplaySize = isJumbo ? 48.0 : 22.0;
+    final emojiFetchSize = isJumbo ? 96 : 48;
+    final unicodeEmojiFont = isJumbo ? 42.0 : widget.fontSize * 1.3;
+
+    final lines = widget.text.split('\n');
+    final spans = <InlineSpan>[];
+    _spoilerCounter = 0;
+
+    for (int i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      TextStyle lineStyle = baseStyle;
+
+      if (line.startsWith('### ')) {
+        line = line.substring(4);
+        lineStyle = baseStyle.copyWith(
+          fontSize: widget.fontSize + 2,
+          fontWeight: FontWeight.w700,
+        );
+      } else if (line.startsWith('## ')) {
+        line = line.substring(3);
+        lineStyle = baseStyle.copyWith(
+          fontSize: widget.fontSize + 4,
+          fontWeight: FontWeight.w700,
+        );
+      } else if (line.startsWith('# ')) {
+        line = line.substring(2);
+        lineStyle = baseStyle.copyWith(
+          fontSize: widget.fontSize + 6,
+          fontWeight: FontWeight.w800,
+        );
+      } else if (line.startsWith('-# ')) {
+        line = line.substring(3);
+        lineStyle = baseStyle.copyWith(
+          fontSize: widget.fontSize - 2.5,
+          color: widget.palette.textMuted,
+        );
+      } else if (line.startsWith('- ') || line.startsWith('* ')) {
+        spans.add(TextSpan(text: '  •  ', style: lineStyle));
+        line = line.substring(2);
+      } else if (line.startsWith('>>> ')) {
+        spans.add(TextSpan(
+          text: '▎ ',
+          style: lineStyle.copyWith(
+            color: widget.palette.textMuted,
+            fontWeight: FontWeight.w900,
+          ),
+        ));
+        line = line.substring(4);
+      } else if (line.startsWith('> ')) {
+        spans.add(TextSpan(
+          text: '▎ ',
+          style: lineStyle.copyWith(
+            color: widget.palette.textMuted,
+            fontWeight: FontWeight.w900,
+          ),
+        ));
+        line = line.substring(2);
+        lineStyle = lineStyle.copyWith(color: widget.palette.textSecondary);
+      }
+
+      _inline(line, lineStyle, spans, emojiDisplaySize, emojiFetchSize,
+          unicodeEmojiFont);
       if (i < lines.length - 1) {
         spans.add(const TextSpan(text: '\n'));
       }

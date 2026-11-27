@@ -290,7 +290,22 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
     final subtitleText =
         hasDistinctNick ? '${_user.displayName} • ${_user.tag}' : _user.tag;
 
-    final badges = isSelf ? acc.realBadges : _user.realBadges;
+    // Bots can't read premium_type; only Nitro users can set a profile banner,
+    // an animated avatar or per-server avatar/banner, so those prove Nitro.
+    final hasNitro = !_user.bot &&
+        (_user.banner != null ||
+            (_user.avatar?.startsWith('a_') ?? false) ||
+            _member?.guildAvatar != null ||
+            _member?.guildBanner != null);
+    final badges = [
+      if (hasNitro)
+        const DiscordBadgeInfo(
+          id: 'premium',
+          description: 'Nitro 會員',
+          iconHash: '2ba85e8026a8614b640c2837bcdfe21b',
+        ),
+      ...(isSelf ? acc.realBadges : _user.realBadges),
+    ];
     final isBot = isSelf || _user.bot;
     final isVerifiedBot = isSelf ? acc.isVerifiedBot : _user.isVerifiedBot;
 

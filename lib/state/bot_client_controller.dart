@@ -1099,8 +1099,11 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     messagesNotifier.value = const [];
 
     try {
-      final fetched = await _rest!.getChannelMessages(channelId, limit: 50);
-      _cacheMessageAuthorsInGuild(fetched);
+      final fetchedRaw =
+          await _rest!.getChannelMessages(channelId, limit: 50);
+      _cacheMessageAuthorsInGuild(fetchedRaw);
+      _prefetchLoggerImages(fetchedRaw.take(30));
+      final fetched = _withLoggedDeletes(channelId, fetchedRaw);
       _putChannelCache(channelId, fetched);
       if (_selectedChannelId == channelId) {
         messagesNotifier.value = List.unmodifiable(fetched);
@@ -1474,6 +1477,61 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // MessageLogger: deleted messages survive channel reloads, and image bytes are
+  // kept because Discord's CDN stops serving deleted attachments.
+  // shortcut: memory only (lost on app restart), last 80 images at ~640px.
+  final Map<String, Map<String, DiscordMessage>> _loggedDeleted =
+      <String, Map<String, DiscordMessage>>{};
+  final LinkedHashMap<String, Uint8List> _loggedImageBytes =
+      LinkedHashMap<String, Uint8List>();
+  Uint8List? loggedImageBytes(String attachmentId) =>
+      _loggedImageBytes[attachmentId];
+
+  bool get _loggerKeepsDeletes =>
+      vencord.isPluginEnabled('MessageLogger') &&
+      vencord.getSetting<bool>('MessageLogger', 'logDeletes', true);
+
+  void _prefetchLoggerImages(Iterable<DiscordMessage> msgs) {
+    final rest = _rest;
+    if (rest == null || !_loggerKeepsDeletes) return;
+    for (final m in msgs) {
+      for (final a in m.attachments) {
+        if (!a.isImage || _loggedImageBytes.containsKey(a.id)) continue;
+        unawaited(() async {
+          final bytes = await rest.fetchBytes(a.previewUrl(maxWidth: 640));
+          if (bytes == null) return;
+          _loggedImageBytes[a.id] = bytes;
+          while (_loggedImageBytes.length > 80) {
+            _loggedImageBytes.remove(_loggedImageBytes.keys.first);
+          }
+        }());
+      }
+    }
+  }
+
+  void _recordLoggedDelete(DiscordMessage deleted) {
+    final perChannel = _loggedDeleted.putIfAbsent(
+        deleted.channelId, () => <String, DiscordMessage>{});
+    perChannel[deleted.id] = deleted;
+    if (perChannel.length > 200) perChannel.remove(perChannel.keys.first);
+  }
+
+  /// Re-inserts logged deletions that fall inside a freshly fetched page.
+  List<DiscordMessage> _withLoggedDeletes(
+    String channelId,
+    List<DiscordMessage> msgs,
+  ) {
+    final logged = _loggedDeleted[channelId];
+    if (logged == null || logged.isEmpty || msgs.isEmpty) return msgs;
+    final ids = msgs.map((m) => m.id).toSet();
+    final oldest = msgs.last.id;
+    final extra = logged.values
+        .where((m) => !ids.contains(m.id) && compareSnowflakes(m.id, oldest) > 0)
+        .toList();
+    if (extra.isEmpty) return msgs;
+    return [...msgs, ...extra]..sort((a, b) => compareSnowflakes(b.id, a.id));
+  }
+
   bool _shouldMessageLoggerCapture(DiscordMessage msg, {required bool isDelete}) {
     if (!vencord.isPluginEnabled('MessageLogger')) return false;
     final flag = isDelete
@@ -1496,7 +1554,16 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     final chId = _selectedChannelId;
     if (chId == null || _rest == null) return;
     await _rest!.deleteMessage(chId, messageId);
-    _removeMessageFromCache(chId, messageId);
+    final cached = _messageCache[chId];
+    final idx = cached?.indexWhere((m) => m.id == messageId) ?? -1;
+    if (idx >= 0 &&
+        _shouldMessageLoggerCapture(cached![idx], isDelete: true)) {
+      final deleted = cached[idx].copyWith(isDeleted: true);
+      _recordLoggedDelete(deleted);
+      _insertOrUpdateMessage(chId, deleted, isNew: false);
+    } else {
+      _removeMessageFromCache(chId, messageId);
+    }
   }
 
   Future<void> toggleReaction(
@@ -2250,6 +2317,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           }
 
           _insertOrUpdateMessage(msg.channelId, msg, isNew: true);
+          _prefetchLoggerImages([msg]);
 
           final isOpenNow =
               _isActivelyViewingChat && _selectedChannelId == msg.channelId;
@@ -2323,11 +2391,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             final idx = cachedList?.indexWhere((m) => m.id == msgId) ?? -1;
             if (idx >= 0 &&
                 _shouldMessageLoggerCapture(cachedList![idx], isDelete: true)) {
-              _insertOrUpdateMessage(
-                chId,
-                cachedList[idx].copyWith(isDeleted: true),
-                isNew: false,
-              );
+              final deleted = cachedList[idx].copyWith(isDeleted: true);
+              _recordLoggedDelete(deleted);
+              _insertOrUpdateMessage(chId, deleted, isNew: false);
             } else {
               _removeMessageFromCache(chId, msgId);
             }
@@ -2347,7 +2413,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
               if (!ids.contains(m.id)) {
                 next.add(m);
               } else if (_shouldMessageLoggerCapture(m, isDelete: true)) {
-                next.add(m.copyWith(isDeleted: true));
+                final deleted = m.copyWith(isDeleted: true);
+                _recordLoggedDelete(deleted);
+                next.add(deleted);
               }
             }
             _messageCache[chId] = next;

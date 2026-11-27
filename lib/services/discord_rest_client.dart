@@ -486,6 +486,18 @@ class DiscordRestClient {
     return DiscordChannel.fromJson(res);
   }
 
+  /// Raw bytes of a CDN file (used by MessageLogger to keep deleted images).
+  Future<Uint8List?> fetchBytes(String url) async {
+    try {
+      final res = await _httpClient
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 15));
+      return res.statusCode == 200 ? res.bodyBytes : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Fetches full DiscordUser object (`banner`, `accent_color`, `public_flags`, `avatar`).
   Future<DiscordUser> getUser(String userId) async {
     final res =

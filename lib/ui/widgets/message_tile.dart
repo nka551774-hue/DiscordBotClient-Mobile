@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -939,6 +941,11 @@ class _MessageTileState extends State<MessageTile> {
                                                   attachment: att,
                                                   palette: palette,
                                                   ecoMode: widget.ecoMode,
+                                                  deletedBytes: message.isDeleted
+                                                      ? widget.controller
+                                                          .loggedImageBytes(
+                                                              att.id)
+                                                      : null,
                                                   onOpen: () {
                                                     final imgs = message
                                                         .attachments
@@ -1134,12 +1141,15 @@ class _AttachmentView extends StatelessWidget {
   final DiscordPalette palette;
   final bool ecoMode;
   final VoidCallback onOpen;
+  /// MessageLogger copy of a deleted image (CDN no longer serves it).
+  final Uint8List? deletedBytes;
 
   const _AttachmentView({
     required this.attachment,
     required this.palette,
     required this.ecoMode,
     required this.onOpen,
+    this.deletedBytes,
   });
 
   @override
@@ -1154,12 +1164,14 @@ class _AttachmentView extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 240, maxWidth: 300),
-              child: Image.network(
-                attachment.previewUrl(maxWidth: maxW),
-                cacheWidth: maxW,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _fileCard(),
-              ),
+              child: deletedBytes != null
+                  ? Image.memory(deletedBytes!, fit: BoxFit.cover)
+                  : Image.network(
+                      attachment.previewUrl(maxWidth: maxW),
+                      cacheWidth: maxW,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _fileCard(),
+                    ),
             ),
           ),
         ),
@@ -1321,6 +1333,7 @@ class _EmbedCard extends StatelessWidget {
               palette: palette,
               guild: guild,
               ecoMode: ecoMode,
+              alwaysAnimate: alwaysAnimate,
               fontSize: 13.5,
             ),
             const SizedBox(height: 2),
@@ -1452,13 +1465,14 @@ class _EmbedCard extends StatelessWidget {
                         child: embed.url != null
                             ? GestureDetector(
                                 onTap: () => _open(embed.url),
-                                child: Text(
-                                  embed.title!,
-                                  style: const TextStyle(
-                                    color: Color(0xFF00A8FC),
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                  ),
+                                child: DiscordMarkdownView(
+                                  text: '**${embed.title!}**',
+                                  palette: palette,
+                                  guild: guild,
+                                  ecoMode: ecoMode,
+                                  alwaysAnimate: alwaysAnimate,
+                                  fontSize: 15,
+                                  overrideTextColor: const Color(0xFF00A8FC),
                                 ),
                               )
                             : DiscordMarkdownView(
@@ -1466,6 +1480,7 @@ class _EmbedCard extends StatelessWidget {
                                 palette: palette,
                                 guild: guild,
                                 ecoMode: ecoMode,
+                                alwaysAnimate: alwaysAnimate,
                                 fontSize: 15,
                               ),
                       ),

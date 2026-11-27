@@ -1,7 +1,7 @@
 name: discord_bot_client
 description: Ultra-lightweight, 120fps low-power mobile Discord Bot Client for Android (APK) & iOS (IPA), inspired by aiko-chan-ai/DiscordBotClient.
 publish_to: 'none'
-version: 1.8.1+13
+version: 1.8.2+14
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

@@ -170,12 +170,17 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.8.1
+          tag_name: v1.8.2
           make_latest: true
-          name: "DiscordBotClient Mobile v1.8.1 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.8.2 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.8.1
+            ## DiscordBotClient Mobile v1.8.2
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.8.2 更新內容
+            - **嵌入訊息內的表情符號**：粗體、斜體、底線、刪除線內的自訂表情、提及與連結現在都會正確顯示（嵌入標題與欄位名稱亦同）。
+            - **MessageLogger**：自己刪除的訊息也會保留並標示為已刪除；已刪除的圖片改用預先快取的副本顯示（Discord CDN 刪除後不再提供檔案）；重新載入頻道後已刪除訊息不會消失。
+            - **Nitro 徽章**：依真實資料（個人橫幅、動態頭像、伺服器個人頭像或橫幅）判斷並顯示 Nitro 徽章。
 
             ### v1.8.1 更新內容 (訊息顯示與手勢修正)
             - **嵌入訊息**：完整支援 Components V2（容器、文字區塊、區段、縮圖、媒體庫、檔案、分隔線）與彩色按鈕 / 選單，不再顯示成一排「Button」；嵌入支援 `[文字](連結)` 遮罩連結、`-#` 小字、清單、提供者名稱、作者連結、最多三欄的行內欄位與頁尾時間；GIF / 圖片連結如官方只顯示媒體並隱藏網址；編輯後的訊息元件即時更新。
