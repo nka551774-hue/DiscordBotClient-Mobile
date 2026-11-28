@@ -264,6 +264,29 @@ class _RichParagraph extends StatefulWidget {
 
 class _RichParagraphState extends State<_RichParagraph> {
   final Set<int> _revealedSpoilers = <int>{};
+  // Parsed result; chat tiles rebuild on every controller tick, so re-parse
+  // only when an input that affects the output changes.
+  Widget? _cached;
+
+  @override
+  void didUpdateWidget(covariant _RichParagraph old) {
+    super.didUpdateWidget(old);
+    final w = widget;
+    if (w.text != old.text ||
+        w.fontSize != old.fontSize ||
+        w.ecoMode != old.ecoMode ||
+        w.revealAllSpoilers != old.revealAllSpoilers ||
+        w.alwaysAnimate != old.alwaysAnimate ||
+        w.roleColorMentions != old.roleColorMentions ||
+        w.transformFakeNitroEmojis != old.transformFakeNitroEmojis ||
+        w.overrideTextColor != old.overrideTextColor ||
+        w.palette.textPrimary != old.palette.textPrimary ||
+        w.palette.textMuted != old.palette.textMuted ||
+        !identical(w.guild?.roles, old.guild?.roles) ||
+        !identical(w.guild?.cachedMembers, old.guild?.cachedMembers)) {
+      _cached = null;
+    }
+  }
 
   static final RegExp _tokenRegex = RegExp(
     r'(\|\|.+?\|\|)|(`[^`\n]+`)|(<a?:[^:>\s]+:\d+>)|(\[[^\[\]\n]+\]\(https?://(?:cdn\.discordapp\.com|media\.discordapp\.net)/emojis/\d+\.(?:webp|png|gif)[^\)\s]*\))|(\[[^\[\]\n]+\]\(<?https?://[^\s)>]+>?\))|(\*\*\*.+?\*\*\*)|(\*\*.+?\*\*)|(__.+?__)|(~~.+?~~)|(\*[^*\n]+\*)|(<@!?\d+>)|(<#\d+>)|(<@&\d+>)|(<t:\d+(?::[a-zA-Z])?>)|(https?://[^\s<>]+)',
@@ -380,6 +403,7 @@ class _RichParagraphState extends State<_RichParagraph> {
               ..onTap = () {
                 setState(() {
                   _revealedSpoilers.add(currentSpoilerIdx);
+                  _cached = null;
                 });
               },
           ));
@@ -634,7 +658,9 @@ class _RichParagraphState extends State<_RichParagraph> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => _cached ??= _buildRich();
+
+  Widget _buildRich() {
     final baseStyle = TextStyle(
       color: widget.overrideTextColor ?? widget.palette.textPrimary,
       fontSize: widget.fontSize,

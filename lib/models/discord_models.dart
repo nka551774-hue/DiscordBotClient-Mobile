@@ -36,10 +36,8 @@ class EcoSettings {
     mask |= (1 << 12); // DIRECT_MESSAGES
     mask |= (1 << 13); // DIRECT_MESSAGE_REACTIONS
 
-    if (!ecoPowerSaving) {
-      mask |= (1 << 11); // GUILD_MESSAGE_TYPING
-      mask |= (1 << 14); // DIRECT_MESSAGE_TYPING
-    }
+    mask |= (1 << 11); // GUILD_MESSAGE_TYPING
+    mask |= (1 << 14); // DIRECT_MESSAGE_TYPING
 
     if (!stripPrivileged) {
       final hasAppFlags = applicationFlags != null && applicationFlags > 0;
@@ -54,7 +52,7 @@ class EcoSettings {
       // ApplicationFlags: GATEWAY_PRESENCE (1<<12) | LIMITED (1<<13)
       final appAllowsPresence = !hasAppFlags ||
           ((applicationFlags & ((1 << 12) | (1 << 13))) != 0);
-      if (enablePresenceIntent && !ecoPowerSaving && appAllowsPresence) {
+      if (enablePresenceIntent && appAllowsPresence) {
         mask |= (1 << 8); // GUILD_PRESENCES
       }
 
@@ -70,8 +68,8 @@ class EcoSettings {
 
   bool get oledBlackMode => theme == 'onyx';
 
-  int get avatarSize => ecoPowerSaving ? 64 : 128;
-  int get attachmentPreviewWidth => ecoPowerSaving ? 400 : 720;
+  int get avatarSize => 128;
+  int get attachmentPreviewWidth => 720;
 
   EcoSettings copyWith({
     String? theme,

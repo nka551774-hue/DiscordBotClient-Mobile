@@ -300,7 +300,7 @@ class DiscordGatewayService {
         'token': token,
         'intents': intents,
         'shard': [currentShard, totalShards],
-        'large_threshold': ecoSettings.ecoPowerSaving ? 50 : 100,
+        'large_threshold': 100,
         'properties': {
           'os': Platform.isIOS ? 'ios' : 'android',
           'browser': 'Discord Android',

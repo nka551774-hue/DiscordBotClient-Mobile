@@ -404,14 +404,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _applyImageCacheLimits() {
-    final cache = PaintingBinding.instance.imageCache;
-    if (_ecoSettings.ecoPowerSaving) {
-      cache.maximumSize = 120;
-      cache.maximumSizeBytes = 35 << 20;
-    } else {
-      cache.maximumSize = 300;
-      cache.maximumSizeBytes = 80 << 20;
-    }
+    PaintingBinding.instance.imageCache
+      ..maximumSize = 300
+      ..maximumSizeBytes = 80 << 20;
   }
 
   @override
@@ -420,8 +415,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      // Never suspend Gateway while connected to a Voice Channel!
-      if (_ecoSettings.ecoPowerSaving && _activeVoiceChannelId == null) {
+      // Drop the socket after a short time in the background (like the
+      // official app); never while connected to a voice channel.
+      if (_activeVoiceChannelId == null) {
         _ecoSuspendTimer?.cancel();
         _ecoSuspendTimer = Timer(
           Duration(seconds: _ecoSettings.backgroundSuspendSeconds),
@@ -1345,7 +1341,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
           ...current,
           ...older.where((m) => !existingIds.contains(m.id)),
         ];
-        final maxKeep = _ecoSettings.ecoPowerSaving ? 180 : 350;
+        const maxKeep = 350;
         final trimmed =
             merged.length > maxKeep ? merged.sublist(0, maxKeep) : merged;
         _putChannelCache(chId, trimmed);
@@ -1369,7 +1365,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   void _putChannelCache(String channelId, List<DiscordMessage> messages) {
     _messageCache.remove(channelId);
     _messageCache[channelId] = messages;
-    final maxChannels = _ecoSettings.ecoPowerSaving ? 12 : 25;
+    const maxChannels = 25;
     while (_messageCache.length > maxChannels) {
       _messageCache.remove(_messageCache.keys.first);
     }
@@ -1750,7 +1746,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         vencord.getSetting<bool>('SilentTyping', 'isEnabled', true)) {
       return;
     }
-    if (_ecoSettings.silentTyping || _ecoSettings.ecoPowerSaving) return;
+    if (_ecoSettings.silentTyping) return;
     final chId = _selectedChannelId;
     if (chId == null || _rest == null) return;
     final now = DateTime.now();
@@ -2651,7 +2647,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
       list[idx] = msg;
     } else if (isNew) {
       list.insert(0, msg);
-      final maxKeep = _ecoSettings.ecoPowerSaving ? 150 : 300;
+      const maxKeep = 300;
       if (list.length > maxKeep) {
         list.removeRange(maxKeep, list.length);
       }

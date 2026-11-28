@@ -2043,6 +2043,15 @@ class _HomeScreenState extends State<HomeScreen>
     return ListView(
       padding: const EdgeInsets.only(bottom: 12),
       children: [
+        if (guild.banner != null)
+          AspectRatio(
+            aspectRatio: 2.609375, // official STICKY_BANNER_ASPECT_RATIO
+            child: Image.network(
+              'https://cdn.discordapp.com/banners/${guild.id}/${guild.banner}.webp?size=600',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
         // Server Header (checks REAL guild.features for badges & Community status!)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 14, 12),
@@ -2631,14 +2640,21 @@ class _HomeScreenState extends State<HomeScreen>
                                   right: Radius.circular(4)),
                             ),
                           ),
+                        // Official row: padding 8, radius md 12, avatar 32
+                        // (REFRESH_MEDIUM_32) + 8, channel-title/semibold.
                         ListTile(
                           selected: selected,
                           selectedTileColor: p.selectedChannelBg,
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 8),
+                          horizontalTitleGap: 8,
+                          minLeadingWidth: 32,
+                          visualDensity: const VisualDensity(vertical: -1),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                           leading: CircleAvatar(
-                            radius: 21,
+                            radius: 16,
                             backgroundImage: user != null
                                 ? NetworkImage(user.avatarUrl(size: 96))
                                 : null,
@@ -2655,12 +2671,11 @@ class _HomeScreenState extends State<HomeScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: (unread || selected)
-                                        ? Colors.white
-                                        : p.textSecondary,
-                                    fontWeight: unread
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    fontSize: 15,
+                                        ? p.textPrimary
+                                        : p.textMuted,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                    height: 22 / 16,
                                   ),
                                 ),
                               ),
@@ -2677,8 +2692,10 @@ class _HomeScreenState extends State<HomeScreen>
                             user != null ? user.username : tr('私人訊息'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style:
-                                TextStyle(color: p.textMuted, fontSize: 12.5),
+                            style: TextStyle(
+                                color: p.textMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500),
                           ),
                           trailing: ctrl.mentionCount(ch.id) > 0
                               ? _redCountBadge(
