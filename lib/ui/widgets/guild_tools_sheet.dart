@@ -959,6 +959,13 @@ class _ChannelDetailsSidePanelState extends State<ChannelDetailsSidePanel> {
                 ),
               ),
             ),
+            if (user.guildTag != null) ...[
+              const SizedBox(width: 6),
+              DiscordGuildTagPill(
+                tag: user.guildTag!,
+                badgeUrl: user.guildTagBadgeUrl,
+              ),
+            ],
             if (user.bot) ...[
               const SizedBox(width: 6),
               Container(

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_theme.dart';
 
@@ -659,6 +660,28 @@ class DiscordGuildTagPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Badge icon from Discord's CDN (PNG badge-icons, or SVG content assets).
+class DiscordBadgeIcon extends StatelessWidget {
+  final String url;
+  final double size;
+
+  const DiscordBadgeIcon(this.url, {super.key, this.size = 20});
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.endsWith('.svg')) {
+      return SvgPicture.network(url, width: size, height: size);
+    }
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      cacheWidth: (size * 2).round(),
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
     );
   }
 }

@@ -365,6 +365,9 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
             ? DateTime.tryParse(_member!.premiumSince!)
             : null) ??
         ctrl.boostingSince(_user.id);
+    final ageBadge = (!_user.bot && !isSelf)
+        ? DiscordBadgeInfo.accountAge(snowflakeCreatedAt(_user.id))
+        : null;
     // Official order: Nitro, booster, then flag badges.
     final badges = [
       if (hasNitro || boostSince != null)
@@ -375,6 +378,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
         ),
       if (boostSince != null) DiscordBadgeInfo.booster(boostSince),
       ...(isSelf ? acc.realBadges : _user.realBadges),
+      if (ageBadge != null) ageBadge,
     ];
     final isBot = isSelf || _user.bot;
     final isVerifiedBot = isSelf ? acc.isVerifiedBot : _user.isVerifiedBot;
@@ -599,14 +603,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                           children: badges.map((b) {
                             return Tooltip(
                               message: b.description,
-                              child: Image.network(
-                                b.iconUrl,
-                                width: 20,
-                                height: 20,
-                                cacheWidth: 40,
-                                errorBuilder: (_, __, ___) =>
-                                    const SizedBox.shrink(),
-                              ),
+                              child: DiscordBadgeIcon(b.iconUrl),
                             );
                           }).toList(),
                         ),

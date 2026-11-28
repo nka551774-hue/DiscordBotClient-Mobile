@@ -759,7 +759,44 @@ class _MessageTileState extends State<MessageTile> {
                                               badgeUrl: message
                                                   .author.guildTagBadgeUrl,
                                             ),
-                                          if (message.author.bot)
+                                          if (message.author.system ||
+                                              (message.flags & 2) != 0)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 4.5,
+                                                      vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: DiscordPalette.blurple,
+                                                borderRadius:
+                                                    BorderRadius.circular(3.5),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (message.author.system) ...[
+                                                    const Icon(
+                                                      Icons.check_rounded,
+                                                      size: 10,
+                                                      color: Colors.white,
+                                                    ),
+                                                    const SizedBox(width: 1),
+                                                  ],
+                                                  Text(
+                                                    message.author.system
+                                                        ? 'OFFICIAL'
+                                                        : 'SERVER',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 9.5,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          else if (message.author.bot)
                                             Container(
                                               padding:
                                                   const EdgeInsets.symmetric(

@@ -364,14 +364,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                           children: badges.map((b) {
                             return Tooltip(
                               message: b.description,
-                              child: Image.network(
-                                b.iconUrl,
-                                width: 20,
-                                height: 20,
-                                cacheWidth: 40,
-                                errorBuilder: (_, __, ___) =>
-                                    const SizedBox.shrink(),
-                              ),
+                              child: DiscordBadgeIcon(b.iconUrl),
                             );
                           }).toList(),
                         ),

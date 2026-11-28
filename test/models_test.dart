@@ -40,6 +40,15 @@ void main() {
         'guild_booster_lvl9');
   });
 
+  test('account age badge tiers', () {
+    final now = DateTime(2026, 11, 28);
+    expect(DiscordBadgeInfo.accountAge(DateTime(2026, 1, 1), now: now), isNull);
+    expect(DiscordBadgeInfo.accountAge(DateTime(2025, 11, 28), now: now)!.id,
+        'account_age_1');
+    expect(DiscordBadgeInfo.accountAge(DateTime(2015, 5, 13), now: now)!.iconUrl,
+        endsWith('1d8caace0299b12bcc469c35ce927e838abd9c645a22fe7c556f4394e57fa79b.svg'));
+  });
+
   test('avatar decoration and /profile extras parse', () {
     final u = DiscordUser.fromJson({
       'id': '1',

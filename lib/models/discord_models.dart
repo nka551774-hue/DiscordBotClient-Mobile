@@ -120,14 +120,49 @@ class DiscordBadgeInfo {
   final String id;
   final String description;
   final String iconHash;
+  // Full icon URL for badges not under /badge-icons (e.g. account-age SVGs).
+  final String? url;
 
   const DiscordBadgeInfo({
     required this.id,
     required this.description,
     required this.iconHash,
+    this.url,
   });
 
-  String get iconUrl => 'https://cdn.discordapp.com/badge-icons/$iconHash.png';
+  String get iconUrl =>
+      url ?? 'https://cdn.discordapp.com/badge-icons/$iconHash.png';
+
+  /// Account Age badge (Seed 1y ... Primordial 10y+), from the account's
+  /// creation date (snowflake). Icons: Discord CDN, via mezotv/discord-badges.
+  static DiscordBadgeInfo? accountAge(DateTime created, {DateTime? now}) {
+    final n = now ?? DateTime.now();
+    var years = n.year - created.year;
+    if (n.month < created.month ||
+        (n.month == created.month && n.day < created.day)) {
+      years--;
+    }
+    if (years < 1) return null;
+    const tiers = [
+      ('Seed', 'dda73966211a0c16533f8fcd9f1f27c27a628ef562927270e79df9b9c5e6cb12'),
+      ('Sprout', '74e1884f930b0d69986f92aeea77d3ff3d3d00c540f386b63e6ebb382d5e927d'),
+      ('Bud', '217dab12dcb72d4c95f2863e9dddd5c42003345a001684ea55a736172f32eea1'),
+      ('Sapling', '26b89419a4f562ab31a1a72eac04833aa1026af937f1d53c088ec258df3db84b'),
+      ('Blossom', '1db184b6d10a61a37dc30efdc74d587560fac5291c8bb329977e93bb5a312602'),
+      ('Redwood', '6b0f2ed5be272942eeabea3a0289027d164c7b1ce6a76166d1c928a57db762c5'),
+      ('Sequoia', 'c095e3e73591843a22dc979d1fcfe3d6cf6841d1f51387d208d19f8bed01deb7'),
+      ('Bristlecone', '867feeff5acd481c80bae557c586718fb5390bbaaa1cbde55fae296a7884e799'),
+      ('Stromatolite', 'a6f4c487be2aa012f41f1fba40e664f914ede9251f4b967d890ab5c065a29fb7'),
+      ('Primordial', '1d8caace0299b12bcc469c35ce927e838abd9c645a22fe7c556f4394e57fa79b'),
+    ];
+    final (name, hash) = tiers[(years > 10 ? 10 : years) - 1];
+    return DiscordBadgeInfo(
+      id: 'account_age_$years',
+      description: '$name · ${years >= 10 ? '10+' : years} years on Discord',
+      iconHash: hash,
+      url: 'https://cdn.discordapp.com/assets/content/$hash.svg',
+    );
+  }
 
   /// Official boost badge level from how long the user has been boosting
   /// (1, 2, 3, 6, 9, 12, 15, 18, 24 months -> guild_booster_lvl1..9).
@@ -481,6 +516,21 @@ class DiscordUser {
         id: 'active_developer',
         description: 'Active Developer',
         iconHash: '6bdc42827a38498929a4920da12695d9',
+      ));
+    }
+    // Bot badges (public flags 2^19 / 2^24 per mezotv/discord-badges).
+    if ((publicFlags & (1 << 19)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'bot_commands',
+        description: 'Supports Commands',
+        iconHash: '6f9e37f9029ff57aef81db857890005e',
+      ));
+    }
+    if ((publicFlags & (1 << 24)) != 0) {
+      list.add(const DiscordBadgeInfo(
+        id: 'automod',
+        description: 'Uses AutoMod',
+        iconHash: 'f2459b691ac7453ed6039bbcfaccbfcd',
       ));
     }
     return list;

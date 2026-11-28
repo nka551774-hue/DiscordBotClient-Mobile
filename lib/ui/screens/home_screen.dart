@@ -2646,19 +2646,32 @@ class _HomeScreenState extends State<HomeScreen>
                                 ? const Icon(Icons.person)
                                 : null,
                           ),
-                          title: Text(
-                            ch.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: (unread || selected)
-                                  ? Colors.white
-                                  : p.textSecondary,
-                              fontWeight: unread
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              fontSize: 15,
-                            ),
+                          title: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  ch.displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: (unread || selected)
+                                        ? Colors.white
+                                        : p.textSecondary,
+                                    fontWeight: unread
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                              if (user?.guildTag != null) ...[
+                                const SizedBox(width: 6),
+                                DiscordGuildTagPill(
+                                  tag: user!.guildTag!,
+                                  badgeUrl: user.guildTagBadgeUrl,
+                                ),
+                              ],
+                            ],
                           ),
                           subtitle: Text(
                             user != null ? user.username : tr('私人訊息'),
