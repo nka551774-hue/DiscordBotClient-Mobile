@@ -48,6 +48,7 @@ String trf(String zhTemplate, List<Object?> args) {
 }
 
 const Map<String, String> _en = {
+  '伺服器': 'Servers',
   'Dark (深色)': 'Dark',
   '查詢使用者': 'Look Up User',
   '使用者 ID、提及或個人資料連結': 'User ID, mention or profile link',
@@ -489,6 +490,7 @@ const Map<String, String> _en = {
 };
 
 const Map<String, String> _ja = {
+  '伺服器': 'サーバー',
   'Dark (深色)': 'ダーク',
   '查詢使用者': 'ユーザーを検索',
   '使用者 ID、提及或個人資料連結': 'ユーザー ID、メンション、プロフィールリンク',

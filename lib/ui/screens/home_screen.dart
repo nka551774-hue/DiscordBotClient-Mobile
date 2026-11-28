@@ -694,7 +694,7 @@ class _HomeScreenState extends State<HomeScreen>
                           details.globalPosition.dx < w - 44) {
                         return;
                       }
-                      if ((ctrl.selectedChannel == null || _homeTab != 0) &&
+                      if ((ctrl.selectedChannel == null || _homeTab > 1) &&
                           _panelCtrl.value <= -0.95 &&
                           dx < 0) {
                         return;
@@ -1319,22 +1319,27 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       children: [
         Expanded(
-          child: _homeTab == 1
-              ? _buildNotificationsPage(ctrl, p)
-              : (_homeTab == 2 ? YouProfilePage(controller: ctrl) : homeBody),
+          child: switch (_homeTab) {
+            1 => Container(color: p.sidebarBg, child: _buildDmPanel(ctrl, p)),
+            2 => _buildNotificationsPage(ctrl, p),
+            3 => YouProfilePage(controller: ctrl),
+            _ => homeBody,
+          },
         ),
         _buildBottomTabBar(ctrl, p),
       ],
     );
   }
 
-  /// Official Discord mobile bottom navigation (首頁 / 通知 / 你).
+  /// Official Discord mobile bottom navigation (伺服器 / 訊息 / 通知 / 你).
   /// Long-press 「你」 switches accounts, same as the official app.
   Widget _buildBottomTabBar(BotClientController ctrl, DiscordPalette p) {
     final acc = ctrl.activeAccount;
     final badgeCount = ctrl.unreadNotificationCount;
     final hasUnreadDms =
         ctrl.dmChannels.any((c) => ctrl.unreadChannelIds.contains(c.id));
+    final dmUnreadCount =
+        ctrl.dmChannels.fold<int>(0, (n, c) => n + ctrl.mentionCount(c.id));
 
     Widget tab({
       required int index,
@@ -1347,7 +1352,12 @@ class _HomeScreenState extends State<HomeScreen>
         child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
-            if (index == 1) ctrl.markNotificationsRead();
+            if (index == 2) ctrl.markNotificationsRead();
+            if (index == 1) ctrl.selectDmMode();
+            // Back from Messages: Servers shows the last server again.
+            if (index == 0 && _homeTab != 0 && ctrl.selectedGuildId == null) {
+              ctrl.flipDmAndServer();
+            }
             setState(() => _homeTab = index);
           },
           onLongPress: onLongPress,
@@ -1422,24 +1432,30 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             tab(
               index: 0,
-              icon: badged(
-                Icon(_homeTab == 0 ? Icons.home_rounded : Icons.home_outlined),
-                dot: hasUnreadDms && _homeTab != 0,
-              ),
-              label: tr('首頁'),
+              icon: const Icon(Icons.home_rounded),
+              label: tr('伺服器'),
             ),
             tab(
               index: 1,
               icon: badged(
-                Icon(_homeTab == 1
-                    ? Icons.notifications_rounded
-                    : Icons.notifications_none_rounded),
+                DiscordGlyph(DiscordGlyphType.chat,
+                    size: 23,
+                    color: _homeTab == 1 ? p.textPrimary : p.textMuted),
+                count: dmUnreadCount,
+                dot: hasUnreadDms,
+              ),
+              label: tr('訊息'),
+            ),
+            tab(
+              index: 2,
+              icon: badged(
+                const Icon(Icons.notifications_rounded),
                 count: badgeCount,
               ),
               label: tr('通知'),
             ),
             tab(
-              index: 2,
+              index: 3,
               icon: acc == null
                   ? const Icon(Icons.person_rounded)
                   : Stack(
@@ -1450,7 +1466,7 @@ class _HomeScreenState extends State<HomeScreen>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _homeTab == 2
+                              color: _homeTab == 3
                                   ? p.textPrimary
                                   : Colors.transparent,
                               width: 1.5,
