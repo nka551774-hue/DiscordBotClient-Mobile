@@ -189,21 +189,17 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.16
+          tag_name: v1.10.17
           make_latest: true
-          name: "DiscordBotClient Mobile v1.10.16 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.10.17 (Android APK & iOS IPA)"
           body: |
             ## ⬇️ 下載
-            - **Android（arm64，推薦）**：[DiscordBotClient-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.16/DiscordBotClient-arm64-v8a.apk)
-            - **Android（通用版）**：[DiscordBotClient-universal.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.16/DiscordBotClient-universal.apk)
-            - **iOS**：[DiscordBotClient-ios.ipa](https://github.com/${{ github.repository }}/releases/download/v1.10.16/DiscordBotClient-ios.ipa)
+            - **Android（arm64，推薦）**：[DiscordBotClient-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.17/DiscordBotClient-arm64-v8a.apk)
+            - **Android（通用版）**：[DiscordBotClient-universal.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.17/DiscordBotClient-universal.apk)
+            - **iOS**：[DiscordBotClient-ios.ipa](https://github.com/${{ github.repository }}/releases/download/v1.10.17/DiscordBotClient-ios.ipa)
 
-            ### v1.10.16 更新內容
-            - **背景省電**：app 退到背景 25 秒後自動中斷連線（語音通話中除外），回到前景立即重連，跟官方一樣。
-            - **聊天效能**：訊息的 Markdown 解析結果會快取，收到其他事件時不再重新解析畫面上的每一則訊息。
-            - **更小的安裝檔**：編譯時啟用程式碼混淆與除錯資訊分離，安裝檔更小。
-            - **私訊列表**：依官方 Messages 分頁數值：頭像 32、名稱 16pt 半粗體、次行 12pt、列內距 8、圓角 12。
-            - **伺服器橫幅**：頻道列表頂端顯示伺服器橫幅（官方比例 2.61:1）。
+            ### v1.10.17 更新內容
+            - **常用表情保留**：表情選擇器的「最近使用」會儲存在手機上，app 重開後依然保留；伺服器與應用程式的自訂表情也會記錄在常用表情中（最多 24 個）。
 
           files: release-assets/*
           draft: false

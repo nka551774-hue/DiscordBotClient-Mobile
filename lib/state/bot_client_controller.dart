@@ -19,6 +19,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   static const String _kDmChannelsPrefix = 'dbc_dm_channels_';
   static const String _kReadStatePrefix = 'dbc_read_state_';
   static const String _kMutedPrefix = 'dbc_muted_';
+  static const String _kRecentEmojisKey = 'dbc_recent_emojis_v1';
   static const int _guildsPerShard = 1000;
 
   SharedPreferences? _prefs;
@@ -377,6 +378,9 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _prefs = await SharedPreferences.getInstance();
     await vencord.load(_prefs);
+    _recentEmojis
+      ..clear()
+      ..addAll(_prefs?.getStringList(_kRecentEmojisKey) ?? const []);
 
     final ecoRaw = _prefs?.getString(_kEcoSettingsKey);
     if (ecoRaw != null) {
@@ -614,6 +618,21 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     final encoded =
         jsonEncode(_savedAccounts.map((e) => e.toJson()).toList());
     await _prefs?.setString(_kAccountsKey, encoded);
+  }
+
+  // Emoji picker "frequently used" row: unicode surrogates or <a?:name:id>.
+  final List<String> _recentEmojis = <String>[];
+  List<String> get recentEmojis => List.unmodifiable(_recentEmojis);
+
+  void recordRecentEmoji(DiscordEmoji em) {
+    final token = (em.id != null && em.id!.isNotEmpty)
+        ? '<${em.animated ? 'a' : ''}:${em.name}:${em.id}>'
+        : em.name;
+    _recentEmojis
+      ..remove(token)
+      ..insert(0, token);
+    if (_recentEmojis.length > 24) _recentEmojis.removeLast();
+    _prefs?.setStringList(_kRecentEmojisKey, _recentEmojis);
   }
 
   // Locally muted channel / guild ids (official "Mute" in long-press sheets).

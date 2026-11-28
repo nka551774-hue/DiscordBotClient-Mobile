@@ -1535,8 +1535,6 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
     'flags': Icons.flag_outlined,
   };
   static const _skinTones = ['', '🏻', '🏼', '🏽', '🏾', '🏿'];
-  // Session-wide like the official picker's "frequently used" row.
-  static final List<String> _recent = <String>[];
   static int _skinTone = 0;
 
   String _withTone(_UnicodeEmoji e) {
@@ -1549,13 +1547,18 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
         [runes.first, ..._skinTones[_skinTone].runes, ...rest]);
   }
 
-  void _pickUnicode(BuildContext context, String surrogate) {
-    _recent
-      ..remove(surrogate)
-      ..insert(0, surrogate);
-    if (_recent.length > 24) _recent.removeLast();
+  static final RegExp _customToken = RegExp(r'^<(a?):(\w+):(\d+)>$');
+
+  /// Picks a recent / grid item: a unicode surrogate or a <a?:name:id> token.
+  void _pickUnicode(BuildContext context, String s) {
+    final m = _customToken.firstMatch(s);
+    final em = m == null
+        ? DiscordEmoji(name: s)
+        : DiscordEmoji(id: m[3], name: m[2]!, animated: m[1] == 'a');
+    if (m != null && !_canSelectEmoji(em)) return;
+    widget.controller.recordRecentEmoji(em);
     Navigator.of(context).pop();
-    widget.onSelectEmoji(DiscordEmoji(name: surrogate));
+    widget.onSelectEmoji(em);
   }
 
   /// Lazy grid of Twemoji images (1900+ emoji would stall a plain Wrap).
@@ -1569,11 +1572,21 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
       delegate: SliverChildBuilderDelegate(
         (ctx, i) {
           final s = items[i];
+          final custom = _customToken.firstMatch(s);
           return InkWell(
             borderRadius: BorderRadius.circular(8),
             onTap: () => _pickUnicode(context, s),
             child: Center(
-              child: twemojiImage(s, 30),
+              child: custom == null
+                  ? twemojiImage(s, 30)
+                  : Image.network(
+                      'https://cdn.discordapp.com/emojis/${custom[3]}.${custom[1] == 'a' ? 'gif' : 'webp'}?size=48',
+                      width: 30,
+                      height: 30,
+                      cacheWidth: 60,
+                      errorBuilder: (_, __, ___) =>
+                          const SizedBox.shrink(),
+                    ),
             ),
           );
         },
@@ -1630,6 +1643,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
               );
               return;
             }
+            widget.controller.recordRecentEmoji(em);
             Navigator.of(context).pop();
             widget.onSelectEmoji(em);
           },
@@ -1961,9 +1975,9 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                     ],
                     if (q.isEmpty &&
                         _selectedCategoryKey == null &&
-                        _recent.isNotEmpty) ...[
+                        widget.controller.recentEmojis.isNotEmpty) ...[
                       _sliverHeader(p, tr('最近使用')),
-                      _sliverPad(_unicodeSliver(context, List.of(_recent))),
+                      _sliverPad(_unicodeSliver(context, widget.controller.recentEmojis)),
                     ],
                     if (q.isEmpty)
                       for (final (key, list) in _unicode)
