@@ -310,6 +310,8 @@ class DiscordUser {
   final String? guildTag;
   final String? guildTagBadge;
   final String? guildTagGuildId;
+  final String? avatarDecorationAsset;
+  final bool system;
 
   const DiscordUser({
     required this.id,
@@ -325,7 +327,13 @@ class DiscordUser {
     this.guildTag,
     this.guildTagBadge,
     this.guildTagGuildId,
+    this.avatarDecorationAsset,
+    this.system = false,
   });
+
+  String? get avatarDecorationUrl => avatarDecorationAsset == null
+      ? null
+      : 'https://cdn.discordapp.com/avatar-decoration-presets/$avatarDecorationAsset.png?size=160&passthrough=false';
 
   String? get guildTagBadgeUrl =>
       (guildTagBadge == null || guildTagGuildId == null)
@@ -456,6 +464,9 @@ class DiscordUser {
         if (accentColor != null) 'accent_color': accentColor,
         'bot': bot,
         'public_flags': publicFlags,
+        if (avatarDecorationAsset != null)
+          'avatar_decoration_data': {'asset': avatarDecorationAsset},
+        if (system) 'system': true,
         if (guildTag != null)
           'primary_guild': {
             'identity_enabled': true,
@@ -473,7 +484,10 @@ class DiscordUser {
     final wearing = pg is Map &&
         pg['identity_enabled'] == true &&
         (pg['tag'] as String?)?.isNotEmpty == true;
+    final deco = json['avatar_decoration_data'];
     return DiscordUser(
+      avatarDecorationAsset: deco is Map ? deco['asset'] as String? : null,
+      system: json['system'] as bool? ?? false,
       guildTag: wearing ? pg['tag'] as String : null,
       guildTagBadge: wearing ? pg['badge'] as String? : null,
       guildTagGuildId: wearing ? pg['identity_guild_id']?.toString() : null,
@@ -498,6 +512,8 @@ class DiscordMember {
   final String? guildBanner;
   final List<String> roleIds;
   final String? joinedAt;
+  final String? premiumSince;
+  final String? timeoutUntil;
 
   const DiscordMember({
     required this.user,
@@ -506,6 +522,8 @@ class DiscordMember {
     this.guildBanner,
     this.roleIds = const [],
     this.joinedAt,
+    this.premiumSince,
+    this.timeoutUntil,
   });
 
   String get effectiveName =>
@@ -571,6 +589,31 @@ class DiscordMember {
       guildBanner: json['banner'] as String?,
       roleIds: rolesRaw.map((e) => e.toString()).toList(),
       joinedAt: json['joined_at'] as String?,
+      premiumSince: json['premium_since'] as String?,
+      timeoutUntil: json['communication_disabled_until'] as String?,
+    );
+  }
+}
+
+/// Fields only `/users/{id}/profile` returns (normally closed to bot tokens).
+class DiscordUserProfileExtras {
+  final String? bio;
+  final String? pronouns;
+  final List<int> themeColors;
+
+  const DiscordUserProfileExtras({
+    this.bio,
+    this.pronouns,
+    this.themeColors = const [],
+  });
+
+  factory DiscordUserProfileExtras.fromJson(Map<String, dynamic> json) {
+    final up = json['user_profile'] as Map<String, dynamic>? ?? const {};
+    final colors = up['theme_colors'] as List<dynamic>? ?? const [];
+    return DiscordUserProfileExtras(
+      bio: up['bio'] as String? ?? (json['user'] as Map?)?['bio'] as String?,
+      pronouns: up['pronouns'] as String?,
+      themeColors: colors.whereType<int>().toList(),
     );
   }
 }

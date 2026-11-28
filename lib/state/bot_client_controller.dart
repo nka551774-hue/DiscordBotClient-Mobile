@@ -593,6 +593,8 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     _dmChannels.clear();
     _messageCache.clear();
     _userProfileCache.clear();
+    _profileExtras.clear();
+    _profileEndpointDenied = false;
     _lastReadMessageId.clear();
     _unreadChannelIds.clear();
     _notifications.clear();
@@ -1754,6 +1756,13 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  final Map<String, DiscordUserProfileExtras> _profileExtras =
+      <String, DiscordUserProfileExtras>{};
+  bool _profileEndpointDenied = false;
+  DiscordUserProfileExtras? profileExtras(String userId) =>
+      _profileExtras[userId];
+  bool get profileEndpointDenied => _profileEndpointDenied;
+
   DiscordUser? getCachedUser(String userId) {
     if (_userProfileCache.containsKey(userId)) {
       return _userProfileCache[userId];
@@ -1794,6 +1803,20 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
             _userProfileCache.remove(_userProfileCache.keys.first);
           }
           user = fetchedUser;
+        } catch (_) {}
+      }());
+    }
+
+    // Best effort: bot tokens are normally refused here (401/403); remember
+    // that so we never retry for this account.
+    if (!_profileEndpointDenied && !_profileExtras.containsKey(userId)) {
+      futures.add(() async {
+        try {
+          _profileExtras[userId] = await _rest!.getUserProfile(userId);
+        } on DiscordApiException catch (e) {
+          if (e.statusCode == 401 || e.statusCode == 403) {
+            _profileEndpointDenied = true;
+          }
         } catch (_) {}
       }());
     }

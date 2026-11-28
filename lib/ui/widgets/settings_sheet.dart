@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import 'discord_icons.dart';
 import 'vencord_sheets.dart';
 import '../../l10n/strings.dart';
+import 'user_profile_sheet.dart';
 
 /// Clean, authentic Discord Mobile "You" Profile Modal Sheet —
 /// renders ONLY real account data (real banner/accentColor, real Discord badges
@@ -574,6 +575,16 @@ class DiscordSettingsScreen extends StatelessWidget {
                   trailing:
                       Icon(Icons.chevron_right, color: p.textMuted, size: 20),
                   onTap: () => showSwitchAccountsSheet(context, controller),
+                ),
+                Divider(height: 1, color: p.border),
+                ListTile(
+                  leading: Icon(Icons.person_search_rounded,
+                      color: p.textSecondary),
+                  title: Text(tr('查詢使用者'),
+                      style: TextStyle(color: p.textPrimary, fontSize: 15)),
+                  trailing:
+                      Icon(Icons.chevron_right, color: p.textMuted, size: 20),
+                  onTap: () => showUserLookupDialog(context, controller),
                 ),
               ]),
               const SizedBox(height: 20),

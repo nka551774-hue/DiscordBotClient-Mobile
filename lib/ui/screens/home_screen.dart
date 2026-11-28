@@ -2514,6 +2514,16 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               const Spacer(),
+              IconButton(
+                tooltip: tr('查詢使用者'),
+                icon: Icon(Icons.person_search_rounded,
+                    color: p.textSecondary, size: 22),
+                onPressed: () => showUserLookupDialog(
+                  context,
+                  ctrl,
+                  onNavigateToDm: () => _animateToPanel(0.0),
+                ),
+              ),
               GestureDetector(
                 onTap: () => _showNewMessageModal(p),
                 child: Container(

@@ -36,6 +36,62 @@ Future<void> showUserProfileSheet(
 
 /// Resolves a user by Snowflake [userId] (e.g. from an inline `<@uid>` mention)
 /// and opens their Discord Mobile User Profile Sheet.
+/// Look up any user by ID, mention (<@id>) or discord.com/users/<id> link.
+Future<void> showUserLookupDialog(
+  BuildContext context,
+  BotClientController controller, {
+  VoidCallback? onNavigateToDm,
+}) async {
+  final textCtrl = TextEditingController();
+  final input = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('查詢使用者')),
+      content: TextField(
+        controller: textCtrl,
+        autofocus: true,
+        keyboardType: TextInputType.text,
+        decoration: InputDecoration(
+          hintText: tr('使用者 ID、提及或個人資料連結'),
+        ),
+        onSubmitted: (v) => Navigator.of(ctx).pop(v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(tr('取消')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(textCtrl.text),
+          child: Text(tr('查詢')),
+        ),
+      ],
+    ),
+  );
+  textCtrl.dispose();
+  if (input == null || !context.mounted) return;
+  final id = RegExp(r'\d{15,21}').firstMatch(input)?.group(0);
+  final messenger = ScaffoldMessenger.of(context);
+  if (id == null) {
+    messenger.showSnackBar(
+        SnackBar(content: Text(tr('請輸入有效的使用者 ID'))));
+    return;
+  }
+  final (user, _) = await controller.fetchRichUserProfile(id);
+  if (!context.mounted) return;
+  if (user == null) {
+    messenger.showSnackBar(SnackBar(content: Text(tr('找不到此使用者'))));
+    return;
+  }
+  await showUserProfileById(
+    context,
+    controller: controller,
+    userId: id,
+    guildId: controller.selectedGuildId,
+    onNavigateToDm: onNavigateToDm,
+  );
+}
+
 Future<void> showUserProfileById(
   BuildContext context, {
   required BotClientController controller,
@@ -275,9 +331,12 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
     final accentInt = isSelf
         ? (acc.accentColor ?? _user.accentColor)
         : _user.accentColor;
-    final bannerColor = accentInt != null
-        ? Color(0xFF000000 | accentInt)
-        : _deriveFallbackBannerColor(_user.id);
+    final extras = isSelf ? null : ctrl.profileExtras(_user.id);
+    final bannerColor = (extras?.themeColors.isNotEmpty ?? false)
+        ? Color(0xFF000000 | extras!.themeColors.first)
+        : accentInt != null
+            ? Color(0xFF000000 | accentInt)
+            : _deriveFallbackBannerColor(_user.id);
 
     final avatarUrl = _member != null
         ? _member!.effectiveAvatarUrl(widget.guildId, size: 128)
@@ -288,8 +347,12 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
     final hasDistinctNick = _member?.nick != null &&
         _member!.nick!.isNotEmpty &&
         _member!.nick != _user.displayName;
-    final subtitleText =
-        hasDistinctNick ? '${_user.displayName} • ${_user.tag}' : _user.tag;
+    final pronouns = extras?.pronouns;
+    final subtitleText = [
+      hasDistinctNick ? '${_user.displayName} • ${_user.tag}' : _user.tag,
+      if (pronouns != null && pronouns.isNotEmpty) pronouns,
+    ].join(' • ');
+    final otherBio = extras?.bio;
 
     // Bots can't read premium_type; only Nitro users can set a profile banner,
     // an animated avatar or per-server avatar/banner, so those prove Nitro.
@@ -401,6 +464,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                                 )
                             : null,
                         child: Stack(
+                          clipBehavior: Clip.none,
                           children: [
                             Container(
                               padding: const EdgeInsets.all(5),
@@ -413,6 +477,20 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                                 backgroundImage: NetworkImage(avatarUrl),
                               ),
                             ),
+                            if (_user.avatarDecorationUrl != null)
+                              Positioned(
+                                left: -4,
+                                top: -4,
+                                width: 102,
+                                height: 102,
+                                child: IgnorePointer(
+                                  child: Image.network(
+                                    _user.avatarDecorationUrl!,
+                                    errorBuilder: (_, __, ___) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
                             if (isSelf)
                               Positioned(
                                 right: 3,
@@ -662,7 +740,8 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                     const SizedBox(height: 16),
 
                     // Bio Card (for own Bot if description/bio exists)
-                    if (isSelf && acc.bio != null && acc.bio!.isNotEmpty) ...[
+                    if ((isSelf && acc.bio != null && acc.bio!.isNotEmpty) ||
+                        (otherBio != null && otherBio.isNotEmpty)) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(15),
@@ -684,7 +763,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              acc.bio!,
+                              isSelf ? acc.bio! : otherBio!,
                               style: TextStyle(
                                 color: p.textPrimary,
                                 fontSize: 14,
@@ -844,6 +923,18 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                         ),
                       ),
                     ],
+
+                    const SizedBox(height: 12),
+                    _userDataCard(
+                      context,
+                      p,
+                      ctrl: ctrl,
+                      guild: guild,
+                      isSelf: isSelf,
+                      createdDate: createdDate,
+                      joinedDate: joinedDate,
+                      accentInt: accentInt,
+                    ),
                   ],
                 ),
               ),
@@ -851,6 +942,148 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
           ),
         );
       },
+    );
+  }
+
+  String _fmtDateTime(DateTime dt) {
+    final l = dt.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${l.year}/${two(l.month)}/${two(l.day)} ${two(l.hour)}:${two(l.minute)}';
+  }
+
+  /// Every field the bot API returns for this user / member.
+  Widget _userDataCard(
+    BuildContext context,
+    DiscordPalette p, {
+    required BotClientController ctrl,
+    required DiscordGuild? guild,
+    required bool isSelf,
+    required DateTime createdDate,
+    required DateTime? joinedDate,
+    required int? accentInt,
+  }) {
+    final rows = <(String, String, Widget?)>[
+      (tr('使用者 ID'), _user.id, null),
+      (tr('使用者名稱'), _user.tag, null),
+      (tr('帳號建立時間'), _fmtDateTime(createdDate), null),
+      (
+        tr('帳號類型'),
+        _user.system
+            ? tr('系統')
+            : (_user.bot || isSelf)
+                ? tr('機器人')
+                : tr('使用者'),
+        null
+      ),
+      if (accentInt != null)
+        (
+          tr('強調色'),
+          '#${accentInt.toRadixString(16).padLeft(6, '0').toUpperCase()}',
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: Color(0xFF000000 | accentInt),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      if (_user.guildTag != null)
+        (
+          tr('伺服器標籤'),
+          '${_user.guildTag} · ${ctrl.findGuildById(_user.guildTagGuildId)?.name ?? _user.guildTagGuildId ?? ''}',
+          null
+        ),
+      if (_user.avatarDecorationAsset != null)
+        (tr('頭像裝飾'), _user.avatarDecorationAsset!, null),
+      if (_member != null && guild != null) ...[
+        if (_member!.nick != null && _member!.nick!.isNotEmpty)
+          (tr('伺服器暱稱'), _member!.nick!, null),
+        if (joinedDate != null)
+          (tr('加入伺服器'), _fmtDateTime(joinedDate), null),
+        if (_member!.premiumSince != null)
+          (
+            tr('伺服器加成開始'),
+            _fmtDateTime(DateTime.parse(_member!.premiumSince!)),
+            null
+          ),
+        if (_member!.timeoutUntil != null &&
+            DateTime.parse(_member!.timeoutUntil!).isAfter(DateTime.now()))
+          (
+            tr('禁言至'),
+            _fmtDateTime(DateTime.parse(_member!.timeoutUntil!)),
+            null
+          ),
+        if (_member!.guildAvatar != null)
+          (tr('伺服器頭像'), _member!.guildAvatar!, null),
+      ],
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(15, 13, 15, 8),
+      decoration: BoxDecoration(
+        color: p.sidebarBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: p.border, width: 0.7),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tr('使用者資料'),
+            style: TextStyle(
+              color: p.textSecondary,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final r in rows)
+            InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: r.$2));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(trf('已複製{0}', [r.$1])),
+                  duration: const Duration(seconds: 1),
+                ));
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 104,
+                      child: Text(
+                        r.$1,
+                        style: TextStyle(color: p.textMuted, fontSize: 13),
+                      ),
+                    ),
+                    if (r.$3 != null) ...[r.$3!, const SizedBox(width: 6)],
+                    Expanded(
+                      child: Text(
+                        r.$2,
+                        style: TextStyle(
+                          color: p.textPrimary,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (!isSelf && ctrl.profileEndpointDenied)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Text(
+                tr('機器人帳號無法取得簡介 / 代名詞'),
+                style: TextStyle(color: p.textMuted, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

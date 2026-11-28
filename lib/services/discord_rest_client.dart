@@ -505,6 +505,17 @@ class DiscordRestClient {
     return DiscordUser.fromJson(res, profileFetched: true);
   }
 
+  /// `/users/{id}/profile` (bio, pronouns, theme colours). Discord normally
+  /// rejects bot tokens here; callers treat 401/403 as "unavailable".
+  Future<DiscordUserProfileExtras> getUserProfile(String userId) async {
+    final res = await _request(
+      'GET',
+      '/users/${userId.trim()}/profile',
+      query: {'with_mutual_guilds': 'false'},
+    ) as Map<String, dynamic>;
+    return DiscordUserProfileExtras.fromJson(res);
+  }
+
   /// Fetches a specific guild member (`nick`, `roles`, `joined_at`, `avatar`).
   Future<DiscordMember> getGuildMember(String guildId, String userId) async {
     final res = await _request(

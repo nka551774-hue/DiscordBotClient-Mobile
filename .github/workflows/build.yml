@@ -170,12 +170,18 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.3
+          tag_name: v1.10.4
           make_latest: true
-          name: "DiscordBotClient Mobile v1.10.3 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.10.4 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.10.3
+            ## DiscordBotClient Mobile v1.10.4
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.10.4 更新內容
+            - **查詢使用者**：私訊列表右上與「設定 > 帳號設定」新增「查詢使用者」，輸入使用者 ID、提及或 discord.com/users 連結即可開啟任何人的個人資料（不需在同一伺服器）。
+            - **使用者資料卡**：個人資料新增「使用者資料」區塊，列出 ID、使用者名稱、帳號建立時間、帳號類型、強調色、伺服器標籤與來源伺服器、頭像裝飾；在伺服器內另列暱稱、加入時間、伺服器加成開始、禁言期限與伺服器頭像，點任一列即可複製。
+            - **頭像裝飾**：個人資料頭像會顯示對方的頭像裝飾框。
+            - **簡介 / 代名詞**：會嘗試讀取個人簡介、代名詞與主題色；Discord 不開放機器人帳號讀取時會顯示提示。
 
             ### v1.10.3 更新內容
             - **伺服器標籤（Server Tag）**：讀取使用者的 primary_guild，訊息作者名稱旁與個人資料名稱旁會如官方顯示對方配戴的伺服器標籤（徽章圖示 + 標籤文字）。
