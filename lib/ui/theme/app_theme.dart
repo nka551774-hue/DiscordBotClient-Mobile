@@ -41,6 +41,11 @@ class DiscordPalette {
 
   const DiscordPalette({required this.oled});
 
+  /// Non-Onyx variant: false = Ash (Discord gray, default), true = Dark.
+  static bool darker = false;
+  static Color _t(bool oled, int ash, int dark, int onyx) =>
+      Color(oled ? onyx : (darker ? dark : ash));
+
   static const Color blurple = Color(0xFF5865F2);
   static const Color green = Color(0xFF23A55A);
   static const Color yellow = Color(0xFFF0B232);
@@ -51,63 +56,65 @@ class DiscordPalette {
   Color get brandColor => activeThemeOverrides?.brand ?? blurple;
 
   /// Official mobile semantic tokens (from the iOS app's design system):
-  /// oled = false -> "Dark" (default dark theme), oled = true -> "Onyx".
+  /// Ash (DARK tokens, default gray) / Dark (DARKER) / Onyx (MIDNIGHT).
   /// Vencord Online Themes / QuickCSS can still override each one.
   // BACKGROUND_BASE_LOWEST
   Color get railBg =>
       activeThemeOverrides?.railBg ??
-      (oled ? const Color(0xFF000000) : const Color(0xFF121214));
+      _t(oled, 0xFF2C2D32, 0xFF121214, 0xFF000000);
   // BACKGROUND_BASE_LOWER
   Color get sidebarBg =>
       activeThemeOverrides?.sidebarBg ??
-      (oled ? const Color(0xFF070709) : const Color(0xFF1A1A1E));
+      _t(oled, 0xFF323339, 0xFF1A1A1E, 0xFF070709);
   // BACKGROUND_MOBILE_PRIMARY
   Color get chatBg =>
       activeThemeOverrides?.chatBg ??
-      (oled ? const Color(0xFF000000) : const Color(0xFF1C1D23));
+      _t(oled, 0xFF313338, 0xFF1C1D23, 0xFF000000);
   // BG_BASE_SECONDARY (ACTION_SHEET_BACKGROUND_COLOR)
   Color get profileBg =>
       activeThemeOverrides?.profileBg ??
-      (oled ? const Color(0xFF000000) : const Color(0xFF1C1D23));
+      _t(oled, 0xFF2B2D31, 0xFF1C1D23, 0xFF000000);
   // BG_BASE_TERTIARY (tab bar)
   Color get bottomBarBg =>
       activeThemeOverrides?.bottomBarBg ??
-      (oled ? const Color(0xFF000000) : const Color(0xFF131318));
+      _t(oled, 0xFF232428, 0xFF131318, 0xFF000000);
   // CARD_SECONDARY_BG
   Color get cardBg =>
       activeThemeOverrides?.cardBg ??
-      (oled ? const Color(0xFF0C0C10) : const Color(0xFF212229));
+      _t(oled, 0xFF2B2D31, 0xFF212229, 0xFF0C0C10);
   // CARD_PRIMARY_BG (cards / grouped rows on sheets)
   Color get elevatedBg =>
       activeThemeOverrides?.elevatedBg ??
-      (oled ? const Color(0xFF131318) : const Color(0xFF26272F));
+      _t(oled, 0xFF313338, 0xFF26272F, 0xFF131318);
   // BACKGROUND_MODIFIER_SELECTED (#4d505b @ 60%)
   Color get selectedChannelBg =>
-      activeThemeOverrides?.selectedChannelBg ?? const Color(0x994D505B);
+      activeThemeOverrides?.selectedChannelBg ??
+      _t(oled, 0x994E5058, 0x994D505B, 0x994D505B);
   // REDESIGN_CHAT_INPUT_BACKGROUND
   Color get inputBg =>
       activeThemeOverrides?.inputBg ??
-      (oled ? const Color(0x1ABCBCF0) : const Color(0x1F6C6F7C));
+      _t(oled, 0xFF1E1F22, 0x1F6C6F7C, 0x1ABCBCF0);
   Color get loginInputBg => const Color(0xFF1E1F22);
   // BG_MOD_STRONG (voice panel buttons / pills)
-  Color get modStrong => oled ? const Color(0x2E6C6F7C) : const Color(0x3D6C6F7C);
+  Color get modStrong => _t(oled, 0x8A4E5058, 0x3D6C6F7C, 0x2E6C6F7C);
   // INTERACTIVE_NORMAL
-  Color get interactiveNormal => const Color(0xFFC7C8CE);
+  Color get interactiveNormal => _t(oled, 0xFFB5BAC1, 0xFFC7C8CE, 0xFFC7C8CE);
   // BORDER_SUBTLE
   Color get border =>
       activeThemeOverrides?.border ??
-      (oled ? const Color(0x246C6F7C) : const Color(0x1F6C6F7C));
+      _t(oled, 0x14FFFFFF, 0x1F6C6F7C, 0x246C6F7C);
   // HEADER_PRIMARY
   Color get textPrimary =>
       activeThemeOverrides?.textPrimary ??
-      (oled ? const Color(0xFFECEDEF) : const Color(0xFFE4E5E8));
+      _t(oled, 0xFFF2F3F5, 0xFFE4E5E8, 0xFFECEDEF);
   // TEXT_SECONDARY
   Color get textSecondary =>
       activeThemeOverrides?.textSecondary ??
-      (oled ? const Color(0xFFA8AAB4) : const Color(0xFF9597A3));
+      _t(oled, 0xFFB5BAC1, 0xFF9597A3, 0xFFA8AAB4);
   // TEXT_MUTED
   Color get textMuted =>
-      activeThemeOverrides?.textMuted ?? const Color(0xFF818491);
+      activeThemeOverrides?.textMuted ??
+      _t(oled, 0xFF949BA4, 0xFF818491, 0xFF818491);
 }
 
 ThemeData buildAppTheme({required bool oledBlack}) {

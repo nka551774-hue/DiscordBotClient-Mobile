@@ -92,7 +92,7 @@ class _YouProfileModalSheet extends StatelessWidget {
             children: [
               // 1. Banner + Top Bar Controls + Overlapping Avatar + Status Thought Bubble
               SizedBox(
-                height: 184,
+                height: 196, // YOU_BANNER_IMAGE_HEIGHT 150 + half of the 92 avatar
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -113,7 +113,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                           url: snap.data?.$1?.bannerUrl(size: 1024) ??
                               bannerUrl,
                           color: bannerColor,
-                          height: 132,
+                          height: 150,
                         ),
                       ),
                     ),
@@ -176,13 +176,13 @@ class _YouProfileModalSheet extends StatelessWidget {
                         child: Stack(
                           children: [
                             Container(
-                              padding: const EdgeInsets.all(5),
+                              padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
                                 color: sheetBg,
                                 shape: BoxShape.circle,
                               ),
                               child: CircleAvatar(
-                                radius: 42,
+                                radius: 40,
                                 backgroundImage: NetworkImage(
                                   acc.avatarUrl(size: 128),
                                 ),
@@ -406,7 +406,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: p.sidebarBg,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: p.border, width: 0.7),
                       ),
                       child: Column(
@@ -482,7 +482,7 @@ class _YouProfileModalSheet extends StatelessWidget {
                     Container(
                       decoration: BoxDecoration(
                         color: p.sidebarBg,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: p.border, width: 0.7),
                       ),
                       child: ListTile(
@@ -624,29 +624,41 @@ class DiscordSettingsScreen extends StatelessWidget {
                   title: Text(tr('外觀主題'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    eco.oledBlackMode ? tr('Onyx (純黑)') : tr('Dark (深色)'),
+                    _themeLabels[eco.theme] ?? 'Ash',
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
-                  trailing: Switch(
-                    value: eco.oledBlackMode,
-                    onChanged: (v) => controller.updateEcoSettings(
-                      eco.copyWith(oledBlackMode: v),
+                  trailing: Icon(Icons.chevron_right_rounded,
+                      color: p.textMuted),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    builder: (ctx) => SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final e in _themeLabels.entries)
+                            ListTile(
+                              leading: CircleAvatar(
+                                radius: 12,
+                                backgroundColor: Color(switch (e.key) {
+                                  'onyx' => 0xFF000000,
+                                  'dark' => 0xFF1C1D23,
+                                  _ => 0xFF313338,
+                                }),
+                              ),
+                              title: Text(e.value),
+                              trailing: eco.theme == e.key
+                                  ? const Icon(Icons.check_rounded,
+                                      color: DiscordPalette.blurple)
+                                  : null,
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                controller.updateEcoSettings(
+                                    eco.copyWith(theme: e.key));
+                              },
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-                Divider(height: 1, color: p.border),
-                SwitchListTile(
-                  secondary: Icon(Icons.bolt_outlined, color: p.textSecondary),
-                  title: Text(tr('省電模式'),
-                      style: TextStyle(color: p.textPrimary, fontSize: 15)),
-                  subtitle: Text(
-                    tr('背景閒置時自動休眠連線並降低記憶體快取'),
-                    style: TextStyle(color: p.textMuted, fontSize: 12.5),
-                  ),
-                  value: eco.ecoPowerSaving,
-                  onChanged: (v) => controller.updateEcoSettings(
-                    eco.copyWith(ecoPowerSaving: v),
-                    reconnectGateway: true,
                   ),
                 ),
               ]),
@@ -787,6 +799,13 @@ class DiscordSettingsScreen extends StatelessWidget {
     );
   }
 
+  // Official dark themes (Ash is Discord's default gray).
+  static const _themeLabels = {
+    'ash': 'Ash',
+    'dark': 'Dark',
+    'onyx': 'Onyx',
+  };
+
   Widget _groupLabel(DiscordPalette p, String text) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8),
@@ -805,7 +824,7 @@ class DiscordSettingsScreen extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: p.sidebarBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(children: children),
@@ -862,7 +881,7 @@ void showDiscordStatusSheet(
                 Container(
                   decoration: BoxDecoration(
                     color: p.sidebarBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(
                     children: [
@@ -906,7 +925,7 @@ void showDiscordStatusSheet(
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: p.sidebarBg,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
                     children: [
@@ -1041,7 +1060,7 @@ void showSwitchAccountsSheet(
               Container(
                 decoration: BoxDecoration(
                   color: p.sidebarBg,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
                   children: controller.savedAccounts.map((acc) {

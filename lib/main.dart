@@ -42,7 +42,7 @@ class _DiscordBotClientMobileAppState extends State<DiscordBotClientMobileApp> {
 
   String _shellKey() => '${_controller.initializing}|'
       '${_controller.activeAccount?.id}|'
-      '${_controller.ecoSettings.oledBlackMode}';
+      '${_controller.ecoSettings.theme}';
 
   void _onControllerChanged() => _shell.value = _shellKey();
 
@@ -68,6 +68,7 @@ class _DiscordBotClientMobileAppState extends State<DiscordBotClientMobileApp> {
       listenable: Listenable.merge([_shell, AppLanguage.current]),
       builder: (context, _) {
         final oled = _controller.ecoSettings.oledBlackMode;
+        DiscordPalette.darker = _controller.ecoSettings.theme == 'dark';
         final lang = AppLanguage.current.value;
 
         // Keyed by language so every screen rebuilds its tr() strings.
@@ -78,8 +79,7 @@ class _DiscordBotClientMobileAppState extends State<DiscordBotClientMobileApp> {
           theme: buildAppTheme(oledBlack: oled),
           home: _controller.initializing
               ? Scaffold(
-                  backgroundColor:
-                      oled ? Colors.black : const Color(0xFF1E1F22),
+                  backgroundColor: DiscordPalette(oled: oled).chatBg,
                   body: const Center(
                     child: CircularProgressIndicator(),
                   ),

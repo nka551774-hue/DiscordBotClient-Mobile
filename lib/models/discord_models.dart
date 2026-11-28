@@ -2,7 +2,8 @@ import 'dart:convert';
 import '../l10n/strings.dart';
 
 class EcoSettings {
-  final bool oledBlackMode;
+  /// Official dark themes: 'ash' (Discord gray, default), 'dark', 'onyx'.
+  final String theme;
   final bool ecoPowerSaving;
   final int backgroundSuspendSeconds;
   final bool enableMessageContentIntent;
@@ -11,8 +12,8 @@ class EcoSettings {
   final bool silentTyping;
 
   const EcoSettings({
-    this.oledBlackMode = true,
-    this.ecoPowerSaving = true,
+    this.theme = 'ash',
+    this.ecoPowerSaving = false,
     this.backgroundSuspendSeconds = 25,
     this.enableMessageContentIntent = true,
     this.enableMembersIntent = true,
@@ -67,11 +68,13 @@ class EcoSettings {
     return mask;
   }
 
+  bool get oledBlackMode => theme == 'onyx';
+
   int get avatarSize => ecoPowerSaving ? 64 : 128;
   int get attachmentPreviewWidth => ecoPowerSaving ? 400 : 720;
 
   EcoSettings copyWith({
-    bool? oledBlackMode,
+    String? theme,
     bool? ecoPowerSaving,
     int? backgroundSuspendSeconds,
     bool? enableMessageContentIntent,
@@ -80,7 +83,7 @@ class EcoSettings {
     bool? silentTyping,
   }) {
     return EcoSettings(
-      oledBlackMode: oledBlackMode ?? this.oledBlackMode,
+      theme: theme ?? this.theme,
       ecoPowerSaving: ecoPowerSaving ?? this.ecoPowerSaving,
       backgroundSuspendSeconds:
           backgroundSuspendSeconds ?? this.backgroundSuspendSeconds,
@@ -93,7 +96,7 @@ class EcoSettings {
   }
 
   Map<String, dynamic> toJson() => {
-        'oledBlackMode': oledBlackMode,
+        'theme': theme,
         'ecoPowerSaving': ecoPowerSaving,
         'backgroundSuspendSeconds': backgroundSuspendSeconds,
         'enableMessageContentIntent': enableMessageContentIntent,
@@ -104,8 +107,13 @@ class EcoSettings {
 
   factory EcoSettings.fromJson(Map<String, dynamic> json) {
     return EcoSettings(
-      oledBlackMode: json['oledBlackMode'] as bool? ?? true,
-      ecoPowerSaving: json['ecoPowerSaving'] as bool? ?? true,
+      theme: switch (json['theme']) {
+        'dark' => 'dark',
+        'onyx' => 'onyx',
+        _ => 'ash',
+      },
+      // Power-saving mode was removed; stored values are ignored.
+      ecoPowerSaving: false,
       backgroundSuspendSeconds: json['backgroundSuspendSeconds'] as int? ?? 25,
       enableMessageContentIntent:
           json['enableMessageContentIntent'] as bool? ?? true,

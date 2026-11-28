@@ -217,7 +217,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
           child: Container(
             decoration: BoxDecoration(
               color: p.elevatedBg,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -753,7 +753,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
                           color: p.elevatedBg,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: p.border, width: 0.7),
                         ),
                         child: Column(
@@ -788,7 +788,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                       padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(
                         color: p.elevatedBg,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: p.border, width: 0.7),
                       ),
                       child: Column(
@@ -867,7 +867,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
                           color: p.elevatedBg,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: p.border, width: 0.7),
                         ),
                         child: Column(
@@ -1025,7 +1025,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
       padding: const EdgeInsets.fromLTRB(15, 13, 15, 8),
       decoration: BoxDecoration(
         color: p.elevatedBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: p.border, width: 0.7),
       ),
       child: Column(
