@@ -361,13 +361,19 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
             (_user.avatar?.startsWith('a_') ?? false) ||
             _member?.guildAvatar != null ||
             _member?.guildBanner != null);
+    final boostSince = (_member?.premiumSince != null
+            ? DateTime.tryParse(_member!.premiumSince!)
+            : null) ??
+        ctrl.boostingSince(_user.id);
+    // Official order: Nitro, booster, then flag badges.
     final badges = [
-      if (hasNitro)
+      if (hasNitro || boostSince != null)
         DiscordBadgeInfo(
           id: 'premium',
           description: tr('Nitro 會員'),
           iconHash: '2ba85e8026a8614b640c2837bcdfe21b',
         ),
+      if (boostSince != null) DiscordBadgeInfo.booster(boostSince),
       ...(isSelf ? acc.realBadges : _user.realBadges),
     ];
     final isBot = isSelf || _user.bot;

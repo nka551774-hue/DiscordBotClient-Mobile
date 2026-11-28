@@ -1270,6 +1270,10 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
                 ? m.memberRoleIds
                 : (existing?.roleIds ?? const []),
             joinedAt: existing?.joinedAt,
+            premiumSince: (m.rawJson?['member'] as Map?)?['premium_since']
+                    as String? ??
+                existing?.premiumSince,
+            timeoutUntil: existing?.timeoutUntil,
           );
           _guilds[gId] = g.copyWith(cachedMembers: nextMembers);
         }
@@ -1762,6 +1766,17 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
   DiscordUserProfileExtras? profileExtras(String userId) =>
       _profileExtras[userId];
   bool get profileEndpointDenied => _profileEndpointDenied;
+
+  /// Earliest boost start of [userId] in any server the bot shares (cached).
+  DateTime? boostingSince(String userId) {
+    DateTime? best;
+    for (final g in _guilds.values) {
+      final s = g.cachedMembers[userId]?.premiumSince;
+      final d = s == null ? null : DateTime.tryParse(s);
+      if (d != null && (best == null || d.isBefore(best))) best = d;
+    }
+    return best;
+  }
 
   DiscordUser? getCachedUser(String userId) {
     if (_userProfileCache.containsKey(userId)) {

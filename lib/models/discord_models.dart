@@ -128,6 +128,38 @@ class DiscordBadgeInfo {
   });
 
   String get iconUrl => 'https://cdn.discordapp.com/badge-icons/$iconHash.png';
+
+  /// Official boost badge level from how long the user has been boosting
+  /// (1, 2, 3, 6, 9, 12, 15, 18, 24 months -> guild_booster_lvl1..9).
+  static DiscordBadgeInfo booster(DateTime since, {DateTime? now}) {
+    final n = now ?? DateTime.now();
+    final months = (n.year - since.year) * 12 +
+        n.month -
+        since.month -
+        (n.day < since.day ? 1 : 0);
+    const steps = [0, 2, 3, 6, 9, 12, 15, 18, 24];
+    const hashes = [
+      '51040c70d4f20a921ad6674ff86fc95c',
+      '0e4080d1d333bc7ad29ef6528b6f2fb7',
+      '72bed924410c304dbe3d00a6e593ff59',
+      'df199d2050d3ed4ebf84d64ae83989f8',
+      '996b3e870e8a22ce519b3a50e6bdd52f',
+      '991c9f39ee33d7537d9f408c3e53141e',
+      'cb3ae83c15e970e8f3d410bc62cb8b99',
+      '7142225d31238f6387d9f09efaa02759',
+      'ec92202290b48d0879b7413d2dde3bab',
+    ];
+    var lvl = 0;
+    for (var i = 0; i < steps.length; i++) {
+      if (months >= steps[i]) lvl = i;
+    }
+    return DiscordBadgeInfo(
+      id: 'guild_booster_lvl${lvl + 1}',
+      description: 'Server boosting since '
+          '${since.year}/${since.month}/${since.day}',
+      iconHash: hashes[lvl],
+    );
+  }
 }
 
 class BotAccount {

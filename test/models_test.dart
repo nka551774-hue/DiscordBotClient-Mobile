@@ -28,6 +28,18 @@ void main() {
     expect(DiscordUser.fromJson(worn.toJson()).guildTag, 'DEV');
   });
 
+  test('booster badge level follows official month steps', () {
+    final now = DateTime(2026, 11, 28);
+    expect(DiscordBadgeInfo.booster(DateTime(2026, 11, 1), now: now).id,
+        'guild_booster_lvl1');
+    expect(DiscordBadgeInfo.booster(DateTime(2026, 8, 28), now: now).id,
+        'guild_booster_lvl3');
+    expect(DiscordBadgeInfo.booster(DateTime(2025, 11, 28), now: now).id,
+        'guild_booster_lvl6');
+    expect(DiscordBadgeInfo.booster(DateTime(2023, 1, 1), now: now).id,
+        'guild_booster_lvl9');
+  });
+
   test('avatar decoration and /profile extras parse', () {
     final u = DiscordUser.fromJson({
       'id': '1',
