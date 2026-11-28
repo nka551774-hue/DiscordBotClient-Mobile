@@ -560,7 +560,12 @@ class _HomeScreenState extends State<HomeScreen>
     // Official in-app banner slides down over every screen.
     return Stack(
       children: [
-        Positioned.fill(child: _buildHome(context)),
+        Positioned.fill(
+          child: ListenableBuilder(
+            listenable: widget.controller,
+            builder: (context, _) => _buildHome(context),
+          ),
+        ),
         InAppNotificationBanner(
           controller: widget.controller,
           onOpen: _openFromBanner,

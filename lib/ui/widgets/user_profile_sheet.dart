@@ -68,7 +68,7 @@ Future<void> showUserLookupDialog(
       ],
     ),
   );
-  textCtrl.dispose();
+  // No dispose: the dialog's field still uses it during the close animation.
   if (input == null || !context.mounted) return;
   final id = RegExp(r'\d{15,21}').firstMatch(input)?.group(0);
   final messenger = ScaffoldMessenger.of(context);
@@ -994,8 +994,6 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
           '${_user.guildTag} · ${ctrl.findGuildById(_user.guildTagGuildId)?.name ?? _user.guildTagGuildId ?? ''}',
           null
         ),
-      if (_user.avatarDecorationAsset != null)
-        (tr('頭像裝飾'), _user.avatarDecorationAsset!, null),
       if (_member != null && guild != null) ...[
         if (_member!.nick != null && _member!.nick!.isNotEmpty)
           (tr('伺服器暱稱'), _member!.nick!, null),
@@ -1014,8 +1012,6 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
             _fmtDateTime(DateTime.parse(_member!.timeoutUntil!)),
             null
           ),
-        if (_member!.guildAvatar != null)
-          (tr('伺服器頭像'), _member!.guildAvatar!, null),
       ],
     ];
     return Container(

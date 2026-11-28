@@ -38,6 +38,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) => _buildLogin(context),
+    );
+  }
+
+  Widget _buildLogin(BuildContext context) {
     final ctrl = widget.controller;
     final hasSaved = ctrl.savedAccounts.isNotEmpty;
     final showAccountPicker = hasSaved && !_showTokenForm;

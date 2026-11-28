@@ -36,23 +36,36 @@ class DiscordBotClientMobileApp extends StatefulWidget {
 
 class _DiscordBotClientMobileAppState extends State<DiscordBotClientMobileApp> {
   late final BotClientController _controller;
+  // Only what the app shell shows; screens listen to the controller
+  // themselves, so a gateway event no longer rebuilds MaterialApp + theme.
+  final ValueNotifier<String> _shell = ValueNotifier<String>('');
+
+  String _shellKey() => '${_controller.initializing}|'
+      '${_controller.activeAccount?.id}|'
+      '${_controller.ecoSettings.oledBlackMode}';
+
+  void _onControllerChanged() => _shell.value = _shellKey();
 
   @override
   void initState() {
     super.initState();
     _controller = BotClientController()..init();
+    _shell.value = _shellKey();
+    _controller.addListener(_onControllerChanged);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
     _controller.dispose();
+    _shell.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_controller, AppLanguage.current]),
+      listenable: Listenable.merge([_shell, AppLanguage.current]),
       builder: (context, _) {
         final oled = _controller.ecoSettings.oledBlackMode;
         final lang = AppLanguage.current.value;

@@ -1816,8 +1816,12 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
         } on DiscordApiException catch (e) {
           if (e.statusCode == 401 || e.statusCode == 403) {
             _profileEndpointDenied = true;
+          } else {
+            _profileExtras[userId] = const DiscordUserProfileExtras();
           }
-        } catch (_) {}
+        } catch (_) {
+          _profileExtras[userId] = const DiscordUserProfileExtras();
+        }
       }());
     }
 
@@ -2655,7 +2659,7 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _scheduleCoalescedNotify() {
     if (_coalesceNotifyTimer?.isActive ?? false) return;
-    _coalesceNotifyTimer = Timer(const Duration(milliseconds: 16), () {
+    _coalesceNotifyTimer = Timer(const Duration(milliseconds: 150), () {
       notifyListeners();
     });
   }
