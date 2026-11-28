@@ -578,11 +578,11 @@ class _MessageTileState extends State<MessageTile> {
               alignment: Alignment.centerRight,
               children: [
                 if (mentionsMe)
-                  const Positioned.fill(
+                  Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Color(0x1FF0B232),
-                        border: Border(
+                        color: palette.mentionedBg,
+                        border: const Border(
                           left: BorderSide(color: Color(0xFFF0B232), width: 2),
                         ),
                       ),
@@ -617,7 +617,7 @@ class _MessageTileState extends State<MessageTile> {
                   offset: Offset(_dragOffset, 0),
                   child: Padding(
                     padding:
-                        EdgeInsets.fromLTRB(14, compact ? 2 : 10, 14, 2),
+                        EdgeInsets.fromLTRB(16, compact ? 2 : 16, 16, 2),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -625,7 +625,7 @@ class _MessageTileState extends State<MessageTile> {
                         if (message.referencedMessage != null)
                           Padding(
                             padding:
-                                const EdgeInsets.only(left: 19, bottom: 4),
+                                const EdgeInsets.only(left: 20, bottom: 4),
                             child: Row(
                               children: [
                                 Container(
@@ -700,13 +700,13 @@ class _MessageTileState extends State<MessageTile> {
                                 child: ClipOval(
                                   child: Image.network(
                                     message.author.avatarUrl(size: avatarPx),
-                                    width: 38,
-                                    height: 38,
+                                    width: 40,
+                                    height: 40,
                                     cacheWidth: avatarPx,
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) => Container(
-                                      width: 38,
-                                      height: 38,
+                                      width: 40,
+                                      height: 40,
                                       color: DiscordPalette.blurple,
                                       alignment: Alignment.center,
                                       child: Text(
@@ -725,7 +725,7 @@ class _MessageTileState extends State<MessageTile> {
                                 ),
                               )
                             else
-                              const SizedBox(width: 38),
+                              const SizedBox(width: 40),
 
                             const SizedBox(width: 12),
 
@@ -749,7 +749,7 @@ class _MessageTileState extends State<MessageTile> {
                                               style: TextStyle(
                                                 color: authorColor,
                                                 fontWeight: FontWeight.w600,
-                                                fontSize: 15,
+                                                fontSize: 16,
                                               ),
                                             ),
                                           ),
@@ -836,7 +836,7 @@ class _MessageTileState extends State<MessageTile> {
                                                 message.timestamp),
                                             style: TextStyle(
                                               color: palette.textMuted,
-                                              fontSize: 11.5,
+                                              fontSize: 12,
                                             ),
                                           ),
                                           if (latencyBadge != null)
@@ -928,6 +928,7 @@ class _MessageTileState extends State<MessageTile> {
                                         palette: palette,
                                         guild: widget.guild,
                                         ecoMode: widget.ecoMode,
+                                        fontSize: 16,
                                         revealAllSpoilers: revealSpoilers,
                                         alwaysAnimate: alwaysAnim,
                                         roleColorMentions: roleColorMentions,

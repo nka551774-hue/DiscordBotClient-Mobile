@@ -189,12 +189,17 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.14
+          tag_name: v1.10.15
           make_latest: true
-          name: "DiscordBotClient Mobile v1.10.14 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.10.15 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.10.14
+            ## DiscordBotClient Mobile v1.10.15
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.10.15 更新內容
+            - **聊天畫面**：依官方 MessageConstants 與文字樣式：訊息左右間距 16、訊息群組間距 16、頭像 40、名稱與內文 16pt、時間 12pt，回覆線對齊頭像中心。
+            - **被提及訊息**：底色改用官方 BACKGROUND_MENTIONED（依主題）並保留官方黃色左側線。
+            - **輸入框**：依官方 ChatInputConstants，高度 54、左右間距 12、輸入文字 16pt，移除上方分隔線。
 
             ### v1.10.14 更新內容
             - **官方主題**：設定 > 外觀主題改為官方三種深色主題 Ash / Dark / Onyx，預設為 Discord 的灰色（Ash），所有顏色取自官方設計系統。

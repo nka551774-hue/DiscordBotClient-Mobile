@@ -99,6 +99,8 @@ class DiscordPalette {
   Color get modStrong => _t(oled, 0x8A4E5058, 0x3D6C6F7C, 0x2E6C6F7C);
   // INTERACTIVE_NORMAL
   Color get interactiveNormal => _t(oled, 0xFFB5BAC1, 0xFFC7C8CE, 0xFFC7C8CE);
+  // BACKGROUND_MENTIONED (gutter is YELLOW_300 #f0b232)
+  Color get mentionedBg => _t(oled, 0x1AF0B232, 0x14FCC145, 0x14FCC145);
   // BORDER_SUBTLE
   Color get border =>
       activeThemeOverrides?.border ??

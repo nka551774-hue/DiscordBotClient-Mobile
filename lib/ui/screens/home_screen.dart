@@ -4223,12 +4223,10 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
 
         // Bottom Chat Composer Bar (hidden on Forum root index & Hidden Channels)
         if (!channel.isForum && !isHiddenChannel)
+          // ChatInputConstants: height 54 (40 buttons + 7), padding 12.
           Container(
-            padding: const EdgeInsets.fromLTRB(10, 7, 10, 9),
-            decoration: BoxDecoration(
-              color: p.chatBg,
-              border: Border(top: BorderSide(color: p.border, width: 0.5)),
-            ),
+            padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+            decoration: BoxDecoration(color: p.chatBg),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -4292,7 +4290,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                             maxLines: 5,
                             onChanged: (_) => ctrl.notifyUserTyping(),
                             style: TextStyle(
-                                color: p.textPrimary, fontSize: 15),
+                                color: p.textPrimary, fontSize: 16),
                             decoration: InputDecoration(
                               hintText: canSend
                                   ? (channel.isDm
@@ -4300,7 +4298,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                       : trf('傳送訊息至 #{0}', [channel.name]))
                                   : tr('您沒有在此頻道發送訊息的權限'),
                               hintStyle: TextStyle(
-                                  color: p.textMuted, fontSize: 14.5),
+                                  color: p.textMuted, fontSize: 16),
                               border: InputBorder.none,
                               isDense: true,
                               contentPadding:
