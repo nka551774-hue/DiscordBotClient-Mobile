@@ -34,7 +34,7 @@ jobs:
       - name: Generate Android Scaffolding & Permissions
         run: |
           flutter create --platforms=android --org io.botclient.mobile --project-name discord_bot_client .
-          rm -rf test
+          rm -f test/widget_test.dart
           python3 - << 'EOF'
           from pathlib import Path
           manifest = Path("android/app/src/main/AndroidManifest.xml")
@@ -91,7 +91,7 @@ jobs:
       - name: Generate iOS Scaffolding & Configure 120Hz ProMotion + Permissions
         run: |
           flutter create --platforms=ios --org io.botclient.mobile --project-name discord_bot_client .
-          rm -rf test
+          rm -f test/widget_test.dart
           flutter pub get
           python3 - << 'EOF'
           import plistlib
