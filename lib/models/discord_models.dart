@@ -306,6 +306,10 @@ class DiscordUser {
   final bool bot;
   final int publicFlags;
   final bool profileFetched;
+  // Server Tag the user is wearing (user.primary_guild, identity_enabled).
+  final String? guildTag;
+  final String? guildTagBadge;
+  final String? guildTagGuildId;
 
   const DiscordUser({
     required this.id,
@@ -318,7 +322,15 @@ class DiscordUser {
     this.bot = false,
     this.publicFlags = 0,
     this.profileFetched = false,
+    this.guildTag,
+    this.guildTagBadge,
+    this.guildTagGuildId,
   });
+
+  String? get guildTagBadgeUrl =>
+      (guildTagBadge == null || guildTagGuildId == null)
+          ? null
+          : 'https://cdn.discordapp.com/guild-tag-badges/$guildTagGuildId/$guildTagBadge.png?size=32';
 
   String get displayName =>
       (globalName != null && globalName!.isNotEmpty) ? globalName! : username;
@@ -444,13 +456,27 @@ class DiscordUser {
         if (accentColor != null) 'accent_color': accentColor,
         'bot': bot,
         'public_flags': publicFlags,
+        if (guildTag != null)
+          'primary_guild': {
+            'identity_enabled': true,
+            'tag': guildTag,
+            'badge': guildTagBadge,
+            'identity_guild_id': guildTagGuildId,
+          },
       };
 
   factory DiscordUser.fromJson(
     Map<String, dynamic> json, {
     bool profileFetched = false,
   }) {
+    final pg = json['primary_guild'];
+    final wearing = pg is Map &&
+        pg['identity_enabled'] == true &&
+        (pg['tag'] as String?)?.isNotEmpty == true;
     return DiscordUser(
+      guildTag: wearing ? pg['tag'] as String : null,
+      guildTagBadge: wearing ? pg['badge'] as String? : null,
+      guildTagGuildId: wearing ? pg['identity_guild_id']?.toString() : null,
       id: json['id']?.toString() ?? '0',
       username: json['username'] as String? ?? 'Unknown',
       discriminator: json['discriminator']?.toString() ?? '0',

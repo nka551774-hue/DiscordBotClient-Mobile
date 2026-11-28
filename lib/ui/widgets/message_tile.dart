@@ -753,6 +753,12 @@ class _MessageTileState extends State<MessageTile> {
                                               ),
                                             ),
                                           ),
+                                          if (message.author.guildTag != null)
+                                            DiscordGuildTagPill(
+                                              tag: message.author.guildTag!,
+                                              badgeUrl: message
+                                                  .author.guildTagBadgeUrl,
+                                            ),
                                           if (message.author.bot)
                                             Container(
                                               padding:

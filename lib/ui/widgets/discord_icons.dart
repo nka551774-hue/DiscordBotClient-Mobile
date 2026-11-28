@@ -612,3 +612,53 @@ class DiscordEmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Official Server Tag pill (badge + up to 4 characters) shown next to names.
+class DiscordGuildTagPill extends StatelessWidget {
+  final String tag;
+  final String? badgeUrl;
+  final double fontSize;
+
+  const DiscordGuildTagPill({
+    super.key,
+    required this.tag,
+    this.badgeUrl,
+    this.fontSize = 11.5,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = fontSize + 1;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: const Color(0x1FFFFFFF),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badgeUrl != null) ...[
+            Image.network(
+              badgeUrl!,
+              width: icon,
+              height: icon,
+              cacheWidth: 32,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            tag,
+            style: TextStyle(
+              color: const Color(0xFFDBDEE1),
+              fontSize: fontSize,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

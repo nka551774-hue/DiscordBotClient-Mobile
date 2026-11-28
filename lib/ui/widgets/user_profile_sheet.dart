@@ -453,6 +453,12 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
+                        if (!isSelf && _user.guildTag != null)
+                          DiscordGuildTagPill(
+                            tag: _user.guildTag!,
+                            badgeUrl: _user.guildTagBadgeUrl,
+                            fontSize: 13,
+                          ),
                         if (isBot)
                           Container(
                             padding: const EdgeInsets.symmetric(
