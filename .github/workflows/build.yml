@@ -189,20 +189,18 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.18
+          tag_name: v1.10.19
           make_latest: true
-          name: "DiscordBotClient Mobile v1.10.18 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.10.19 (Android APK & iOS IPA)"
           body: |
             ## ⬇️ 下載
-            - **Android（arm64，推薦）**：[DiscordBotClient-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.18/DiscordBotClient-arm64-v8a.apk)
-            - **Android（通用版）**：[DiscordBotClient-universal.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.18/DiscordBotClient-universal.apk)
-            - **iOS**：[DiscordBotClient-ios.ipa](https://github.com/${{ github.repository }}/releases/download/v1.10.18/DiscordBotClient-ios.ipa)
+            - **Android（arm64，推薦）**：[DiscordBotClient-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.19/DiscordBotClient-arm64-v8a.apk)
+            - **Android（通用版）**：[DiscordBotClient-universal.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.19/DiscordBotClient-universal.apk)
+            - **iOS**：[DiscordBotClient-ios.ipa](https://github.com/${{ github.repository }}/releases/download/v1.10.19/DiscordBotClient-ios.ipa)
 
-            ### v1.10.18 更新內容
-            - **啟動與大型伺服器更流暢**：Gateway 大型封包（READY、GUILD_CREATE 等）改在背景執行緒解析，畫面不再因載入大量伺服器資料而卡頓；封包依序處理，舊連線的殘留封包會被丟棄。
-            - **更省記憶體**：壓縮串流緩衝改用位元組緩衝區，大型封包的記憶體用量降為原本約八分之一。
-            - **更少寫入**：收到私訊時的私訊列表儲存改為 2 秒合併寫入一次。
-            - **程式整理**：移除多餘的 import。
+            ### v1.10.19 更新內容
+            - **聊天更順**：沒有變動的訊息不再重建，收到其他頻道的訊息或事件時，目前畫面上的訊息會直接沿用，捲動與輸入更流暢、更省電。
+            - **頻道列表**：依官方數值，頻道列高度 36（上下內距 8）、語音頻道中的使用者列高度 36、頭像 24。
 
           files: release-assets/*
           draft: false

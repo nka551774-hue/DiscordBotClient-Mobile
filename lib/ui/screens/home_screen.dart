@@ -2295,7 +2295,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0.5),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onLongPress: isHiddenChannel
@@ -2313,7 +2313,7 @@ class _HomeScreenState extends State<HomeScreen>
             },
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: selected ? p.selectedChannelBg : Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
@@ -2454,8 +2454,9 @@ class _HomeScreenState extends State<HomeScreen>
     return InkWell(
       onTap: () => _openVoiceSheet(guild, channel),
       borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(38, 3.5, 16, 3.5),
+      child: Container(
+        height: 36, // official VOICE_USERS_HEIGHT
+        padding: const EdgeInsets.fromLTRB(38, 0, 16, 0),
         child: Row(
           children: [
             Container(
@@ -2468,7 +2469,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               child: CircleAvatar(
-                radius: 10.5,
+                radius: 12,
                 backgroundImage: NetworkImage(avatarUrl),
               ),
             ),
@@ -2759,6 +2760,10 @@ class _DiscordChatPane extends StatefulWidget {
 
 class _DiscordChatPaneState extends State<_DiscordChatPane> {
   final _composerCtrl = TextEditingController();
+  // Built message tiles by id. The pane rebuilds on every controller tick;
+  // returning the same widget instance lets Flutter skip unchanged tiles.
+  final Map<String, (Object, Widget)> _tileCache = {};
+  String? _tileCacheChannel;
   final _scrollCtrl = ScrollController();
   final _imagePicker = ImagePicker();
 
@@ -3870,6 +3875,11 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                               );
                             }
 
+                            if (_tileCacheChannel != channel.id ||
+                                _tileCache.length > messages.length + 60) {
+                              _tileCache.clear();
+                              _tileCacheChannel = channel.id;
+                            }
                             return ListView.builder(
                               controller: _scrollCtrl,
                               reverse: true,
@@ -3924,6 +3934,22 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                                 messages[index + 1].id,
                                                 anchor) <=
                                             0);
+                                final tileKey = (
+                                  msg,
+                                  compact,
+                                  showDateDivider,
+                                  firstUnread,
+                                  guild?.roles,
+                                  guild?.cachedMembers,
+                                  p.textPrimary,
+                                  canManageMessages,
+                                  ctrl.vencord.revision,
+                                );
+                                final cachedTile = _tileCache[msg.id];
+                                if (cachedTile != null &&
+                                    cachedTile.$1 == tileKey) {
+                                  return cachedTile.$2;
+                                }
                                 final tile = MessageTile(
                                   key: ValueKey(msg.id),
                                   controller: ctrl,
@@ -4090,14 +4116,17 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                                     _insertTextAtCursor('@$name ');
                                   },
                                 );
-                                if (!firstUnread) return tile;
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _newMessagesDivider(),
-                                    tile,
-                                  ],
-                                );
+                                final Widget built = firstUnread
+                                    ? Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _newMessagesDivider(),
+                                          tile,
+                                        ],
+                                      )
+                                    : tile;
+                                _tileCache[msg.id] = (tileKey, built);
+                                return built;
                               },
                             );
                           },

@@ -797,7 +797,11 @@ class VencordEngine {
     }
   }
 
+  /// Bumped on every settings change (lets UI caches know plugins changed).
+  int revision = 0;
+
   Future<void> save(SharedPreferences? prefs) async {
+    revision++;
     if (prefs == null) return;
     await prefs.setString(_kVencordStateKey, exportVencordBackupJson(minify: true));
     await prefs.setString(
