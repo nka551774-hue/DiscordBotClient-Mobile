@@ -59,3 +59,7 @@
 1. 前往 [Discord Developer Portal](https://discord.com/developers/applications) 選擇您的應用程式。
 2. 進入 **Bot** 頁面，向下捲動至 **Privileged Gateway Intents**。
 3. 開啟 **`MESSAGE CONTENT INTENT`** 並點擊 Save Changes。
+
+## Credits
+
+Emoji graphics: [Twemoji](https://github.com/jdecked/twemoji) 15.1, licensed under CC-BY 4.0.

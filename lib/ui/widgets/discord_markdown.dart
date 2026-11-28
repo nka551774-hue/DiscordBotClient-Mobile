@@ -8,15 +8,31 @@ import '../theme/app_theme.dart';
 import '../../l10n/strings.dart';
 
 
-/// Twemoji 15.1 image for a unicode emoji (the set Discord itself bundles).
+/// Twemoji 15.1 asset for a unicode emoji (the set Discord itself bundles;
+/// shipped in the app by CI, so it renders instantly and offline).
 /// File name rule: drop FE0F unless the sequence has a ZWJ.
-String twemojiUrl(String emoji) {
+String twemojiAsset(String emoji) {
   final runes = emoji.runes.toList();
   final cps = runes.contains(0x200D)
       ? runes
       : runes.where((r) => r != 0xFE0F).toList();
   final name = cps.map((r) => r.toRadixString(16)).join('-');
-  return 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@v15.1.0/assets/72x72/$name.png';
+  return 'assets/twemoji/$name.png';
+}
+
+/// Emoji image with a text fallback when no Twemoji file exists.
+Widget twemojiImage(String emoji, double size, {TextStyle? fallbackStyle}) {
+  return Image.asset(
+    twemojiAsset(emoji),
+    width: size,
+    height: size,
+    cacheWidth: 72,
+    filterQuality: FilterQuality.medium,
+    errorBuilder: (_, __, ___) => Text(
+      emoji,
+      style: fallbackStyle ?? TextStyle(fontSize: size * 0.8),
+    ),
+  );
 }
 
 class DiscordMarkdownView extends StatelessWidget {
@@ -287,8 +303,6 @@ class _RichParagraphState extends State<_RichParagraph> {
   }
 
   /// Twemoji file name rule: drop FE0F unless the sequence has a ZWJ.
-  static String _twemojiUrl(List<int> runes) =>
-      twemojiUrl(String.fromCharCodes(runes));
 
   /// Plain text with unicode emoji drawn bigger, like the official client.
   void _addPlain(
@@ -317,13 +331,7 @@ class _RichParagraphState extends State<_RichParagraph> {
           alignment: PlaceholderAlignment.middle,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 1),
-            child: Image.network(
-              _twemojiUrl(runes),
-              width: size,
-              height: size,
-              cacheWidth: 72,
-              errorBuilder: (_, __, ___) => Text(emoji, style: emojiStyle),
-            ),
+            child: twemojiImage(emoji, size, fallbackStyle: emojiStyle),
           ),
         ));
       }

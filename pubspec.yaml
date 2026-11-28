@@ -1,7 +1,7 @@
 name: discord_bot_client
 description: Ultra-lightweight, 120fps low-power mobile Discord Bot Client for Android (APK) & iOS (IPA), inspired by aiko-chan-ai/DiscordBotClient.
 publish_to: 'none'
-version: 1.10.9+30
+version: 1.10.10+31
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -22,3 +22,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Twemoji PNGs are fetched into this folder by CI (see build.yml).
+  assets:
+    - assets/twemoji/

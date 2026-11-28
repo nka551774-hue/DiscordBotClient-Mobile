@@ -1573,14 +1573,7 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
             borderRadius: BorderRadius.circular(8),
             onTap: () => _pickUnicode(context, s),
             child: Center(
-              child: Image.network(
-                twemojiUrl(s),
-                width: 30,
-                height: 30,
-                cacheWidth: 72,
-                errorBuilder: (_, __, ___) =>
-                    Text(s, style: const TextStyle(fontSize: 24)),
-              ),
+              child: twemojiImage(s, 30),
             ),
           );
         },
@@ -1802,20 +1795,14 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                         for (var t = 0; t < _skinTones.length; t++)
                           PopupMenuItem<int>(
                             value: t,
-                            child: Image.network(
-                              twemojiUrl('\u{1F44F}${_skinTones[t]}'),
-                              width: 26,
-                              height: 26,
-                            ),
+                            child: twemojiImage(
+                                '\u{1F44F}${_skinTones[t]}', 26),
                           ),
                       ],
                       child: Padding(
                         padding: const EdgeInsets.only(left: 8),
-                        child: Image.network(
-                          twemojiUrl('\u{1F44F}${_skinTones[_skinTone]}'),
-                          width: 26,
-                          height: 26,
-                        ),
+                        child: twemojiImage(
+                            '\u{1F44F}${_skinTones[_skinTone]}', 26),
                       ),
                     ),
                   ],
