@@ -89,6 +89,10 @@ class DiscordPalette {
       activeThemeOverrides?.inputBg ??
       (oled ? const Color(0x1ABCBCF0) : const Color(0x1F6C6F7C));
   Color get loginInputBg => const Color(0xFF1E1F22);
+  // BG_MOD_STRONG (voice panel buttons / pills)
+  Color get modStrong => oled ? const Color(0x2E6C6F7C) : const Color(0x3D6C6F7C);
+  // INTERACTIVE_NORMAL
+  Color get interactiveNormal => const Color(0xFFC7C8CE);
   // BORDER_SUBTLE
   Color get border =>
       activeThemeOverrides?.border ??

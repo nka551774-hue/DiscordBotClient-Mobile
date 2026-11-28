@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -589,7 +591,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
   }
 
   // ---------------------------------------------------------------------------
-  // In-call room: gradient stage, top pill bar, participant tiles, floating dock
+  // In-call room (official VoicePanel): BG_BASE_SECONDARY, pill bar, tinted tiles, controls
   // ---------------------------------------------------------------------------
   Widget _buildRoom(
     BuildContext context,
@@ -602,19 +604,9 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
     bool hasUnreadText,
   ) {
     return Container(
-      decoration: const BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF2F2E8C),
-            Color(0xFF4B3A8E),
-            Color(0xFF7A4F80),
-            Color(0xFFB0735F),
-          ],
-          stops: [0.0, 0.45, 0.8, 1.0],
-        ),
+      decoration: BoxDecoration(
+        color: p.profileBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
@@ -622,7 +614,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
         child: Column(
           children: [
             const SizedBox(height: 8),
-            _handle(const Color(0x66FFFFFF)),
+            _handle(p.textMuted.withAlpha(110)),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
               child: Row(
@@ -630,6 +622,8 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                   _topCircle(
                     Icons.keyboard_arrow_down_rounded,
                     () => Navigator.of(context).pop(),
+                    bg: p.modStrong,
+                    fg: p.interactiveNormal,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -642,7 +636,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 7),
                           decoration: BoxDecoration(
-                            color: const Color(0x40000000),
+                            color: p.modStrong,
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: Row(
@@ -653,15 +647,15 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                                   channel.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14.5,
+                                  style: TextStyle(
+                                    color: p.textPrimary,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ),
-                              const Icon(Icons.chevron_right_rounded,
-                                  size: 17, color: Color(0xCCFFFFFF)),
+                              Icon(Icons.chevron_right_rounded,
+                                  size: 17, color: p.textSecondary),
                             ],
                           ),
                         ),
@@ -677,11 +671,15 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                       HapticFeedback.selectionClick();
                       ctrl.toggleVoiceDeaf();
                     },
+                    bg: p.modStrong,
+                    fg: p.interactiveNormal,
                   ),
                   const SizedBox(width: 8),
                   _topCircle(
                     Icons.person_add_alt_1_rounded,
                     () => _copyChannelInvite(channel, ctrl),
+                    bg: p.modStrong,
+                    fg: p.interactiveNormal,
                   ),
                 ],
               ),
@@ -692,7 +690,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                 child: Text(
                   tr('連線中...'),
                   style: TextStyle(
-                    color: Color(0xCCFFFFFF),
+                    color: p.textSecondary,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -703,7 +701,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                   ? Center(
                       child: Text(
                         tr('等待其他人加入...'),
-                        style: TextStyle(color: Color(0xCCFFFFFF)),
+                        style: TextStyle(color: p.textSecondary),
                       ),
                     )
                   : ValueListenableBuilder<Set<String>>(
@@ -718,8 +716,8 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: single ? 1 : 2,
-                              mainAxisSpacing: 10,
-                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
                               childAspectRatio: single ? 1.5 : 1.07,
                             ),
                             itemCount: participants.length,
@@ -763,6 +761,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
     required bool isSpeaking,
   }) {
     final who = _who(ctrl, guild, vs);
+    final p = DiscordPalette(oled: ctrl.ecoSettings.oledBlackMode);
     return GestureDetector(
       onTap: () => showUserProfileById(
         context,
@@ -771,15 +770,20 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
         guildId: guild.id,
         onNavigateToDm: widget.onNavigateToDm,
       ),
-      child: AnimatedContainer(
+      child: ValueListenableBuilder<Color?>(
+        valueListenable: _dominantColor(ctrl, who.avatar),
+        builder: (_, tint, child) => AnimatedContainer(
         duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: const Color(0x4D1E1F22),
+          color: (tint ?? const Color(0xFF4D505B)).withAlpha(82),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSpeaking ? DiscordPalette.green : Colors.transparent,
             width: 2.5,
           ),
+        ),
+        child: child,
         ),
         child: Stack(
           children: [
@@ -819,9 +823,9 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
                             who.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
+                            style: TextStyle(
+                              color: p.textPrimary,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -858,6 +862,39 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
         ),
       ),
     );
+  }
+
+  // Official tiles take the avatar's dominant colour (useDominantRGBFromImage).
+  static final Map<String, ValueNotifier<Color?>> _dominant = {};
+
+  ValueNotifier<Color?> _dominantColor(BotClientController ctrl, String url) {
+    final cached = _dominant[url];
+    if (cached != null) return cached;
+    final n = _dominant[url] = ValueNotifier<Color?>(null);
+    () async {
+      final bytes = await ctrl.rest?.fetchBytes(url);
+      if (bytes == null) return;
+      try {
+        final codec = await ui.instantiateImageCodec(bytes,
+            targetWidth: 8, targetHeight: 8);
+        final frame = await codec.getNextFrame();
+        final data =
+            await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        if (data == null) return;
+        var r = 0, g = 0, b = 0, count = 0;
+        for (var i = 0; i < data.lengthInBytes; i += 4) {
+          if (data.getUint8(i + 3) < 128) continue;
+          r += data.getUint8(i);
+          g += data.getUint8(i + 1);
+          b += data.getUint8(i + 2);
+          count++;
+        }
+        if (count > 0) {
+          n.value = Color.fromARGB(255, r ~/ count, g ~/ count, b ~/ count);
+        }
+      } catch (_) {}
+    }();
+    return n;
   }
 
   /// Tapping the call-name pill opens call details (official behaviour).
@@ -971,13 +1008,16 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
   ) {
     final muted = ctrl.selfMute;
     final deafened = ctrl.selfDeaf;
-    const dockBtnBg = Color(0x33FFFFFF);
+    final dockBtnBg = p.modStrong;
 
+    // CONTROLS_HEIGHT 80, CONTROLS_MAX_WIDTH 400, button 48.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      height: 80,
+      constraints: const BoxConstraints(maxWidth: 400),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
-        color: const Color(0xCC1E1F22),
-        borderRadius: BorderRadius.circular(26),
+        color: p.elevatedBg.withAlpha(230),
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -985,6 +1025,8 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
           _VoiceDockCircleButton(
             icon: muted ? Icons.mic_off_rounded : Icons.mic_rounded,
             activeWhite: false,
+            red: muted,
+            iconColor: p.interactiveNormal,
             backgroundColor: dockBtnBg,
             tooltip: muted ? tr('取消靜音') : tr('靜音'),
             onTap: () {
@@ -994,7 +1036,9 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
           ),
           _VoiceDockCircleButton(
             icon: deafened ? Icons.headset_off_rounded : Icons.headset_rounded,
-            activeWhite: deafened,
+            activeWhite: false,
+            red: deafened,
+            iconColor: p.interactiveNormal,
             backgroundColor: dockBtnBg,
             tooltip: deafened ? tr('取消拒聽') : tr('拒聽'),
             onTap: () {
@@ -1004,7 +1048,9 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
           ),
           _VoiceDockCircleButton(
             icon: Icons.chat_bubble_rounded,
-            activeWhite: hasUnreadText,
+            activeWhite: false,
+            badge: hasUnreadText,
+            iconColor: p.interactiveNormal,
             backgroundColor: dockBtnBg,
             tooltip: tr('文字聊天室'),
             onTap: () => widget.onOpenVoiceTextChat(channel.id, guild.id),
@@ -1012,6 +1058,7 @@ class _VoiceChannelSheetContentState extends State<_VoiceChannelSheetContent> {
           _VoiceDockCircleButton(
             icon: Icons.rocket_launch_rounded,
             activeWhite: false,
+            iconColor: p.interactiveNormal,
             backgroundColor: dockBtnBg,
             tooltip: tr('活動與音效板'),
             onTap: () {
@@ -1051,6 +1098,9 @@ class _VoiceDockCircleButton extends StatelessWidget {
   final Color backgroundColor;
   final String tooltip;
   final VoidCallback onTap;
+  final bool red;
+  final bool badge;
+  final Color iconColor;
 
   const _VoiceDockCircleButton({
     required this.icon,
@@ -1058,6 +1108,9 @@ class _VoiceDockCircleButton extends StatelessWidget {
     required this.backgroundColor,
     required this.tooltip,
     required this.onTap,
+    this.red = false,
+    this.badge = false,
+    this.iconColor = Colors.white,
   });
 
   @override
@@ -1074,10 +1127,33 @@ class _VoiceDockCircleButton extends StatelessWidget {
             color: activeWhite ? Colors.white : backgroundColor,
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            icon,
-            color: activeWhite ? Colors.black : Colors.white,
-            size: 22,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                icon,
+                // iconFillSelected / iconFillRed (RED_400) / iconFill
+                color: activeWhite
+                    ? Colors.black
+                    : (red ? const Color(0xFFF23F43) : iconColor),
+                size: 22,
+              ),
+              if (badge)
+                Positioned(
+                  right: 10,
+                  top: 10,
+                  child: Container(
+                    width: 9,
+                    height: 9,
+                    // iconBadgeIndicator: CONTROL_BRAND_FOREGROUND
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF949CF7),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

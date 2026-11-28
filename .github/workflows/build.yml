@@ -189,12 +189,16 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.10
+          tag_name: v1.10.11
           make_latest: true
-          name: "DiscordBotClient Mobile v1.10.10 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.10.11 (Android APK & iOS IPA)"
           body: |
-            ## DiscordBotClient Mobile v1.10.10
+            ## DiscordBotClient Mobile v1.10.11
             參考 `aiko-chan-ai/DiscordBotClient`、`aiko-chan-ai/VencordDBCPlugin` 與 `Vendicated/Vencord` 打造的原生級、超低耗能、120Hz 流暢手機版 Discord 機器人客戶端。
+
+            ### v1.10.11 更新內容
+            - **語音房**：依官方 iOS VoicePanel 重做。移除紫橘色漸層背景，改為官方 BG_BASE_SECONDARY 背景與 24 圓角；參與者卡片依官方以頭像主色著色（32% 透明度），間距 12；頂部按鈕與頻道名稱改用官方 BG_MOD_STRONG。
+            - **語音控制列**：官方高度 80、最大寬度 400、按鈕 48；按鈕底色 BG_MOD_STRONG、圖示 INTERACTIVE_NORMAL，靜音 / 拒聽時圖示變紅，文字聊天有未讀時顯示官方藍紫色小點。
 
             ### v1.10.10 更新內容
             - **表情符號秒開**：Twemoji 15.1 表情圖片改為內建在 app 中（不再逐一從網路下載），表情選擇器與訊息中的表情立即顯示，離線也能用。
