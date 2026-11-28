@@ -7,6 +7,18 @@ import '../../models/discord_models.dart';
 import '../theme/app_theme.dart';
 import '../../l10n/strings.dart';
 
+
+/// Twemoji 15.1 image for a unicode emoji (the set Discord itself bundles).
+/// File name rule: drop FE0F unless the sequence has a ZWJ.
+String twemojiUrl(String emoji) {
+  final runes = emoji.runes.toList();
+  final cps = runes.contains(0x200D)
+      ? runes
+      : runes.where((r) => r != 0xFE0F).toList();
+  final name = cps.map((r) => r.toRadixString(16)).join('-');
+  return 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@v15.1.0/assets/72x72/$name.png';
+}
+
 class DiscordMarkdownView extends StatelessWidget {
   final String text;
   final DiscordPalette palette;
@@ -275,13 +287,8 @@ class _RichParagraphState extends State<_RichParagraph> {
   }
 
   /// Twemoji file name rule: drop FE0F unless the sequence has a ZWJ.
-  static String _twemojiUrl(List<int> runes) {
-    final cps = runes.contains(0x200D)
-        ? runes
-        : runes.where((r) => r != 0xFE0F).toList();
-    final name = cps.map((r) => r.toRadixString(16)).join('-');
-    return 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@v15.1.0/assets/72x72/$name.png';
-  }
+  static String _twemojiUrl(List<int> runes) =>
+      twemojiUrl(String.fromCharCodes(runes));
 
   /// Plain text with unicode emoji drawn bigger, like the official client.
   void _addPlain(

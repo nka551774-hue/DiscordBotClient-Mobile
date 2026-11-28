@@ -6,7 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/discord_models.dart';
 import '../../services/vencord_engine.dart';
 import '../../state/bot_client_controller.dart';
+import '../../data/emoji_data.dart';
 import '../theme/app_theme.dart';
+import 'discord_markdown.dart';
 import 'user_profile_sheet.dart';
 import '../../l10n/strings.dart';
 
@@ -1511,11 +1513,81 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
   String _query = '';
   String? _selectedCategoryKey; // null = All, 'app' = App Emojis, 'unicode' = Unicode, or guildId
 
-  static const _commonUnicode = [
-    '😀', '😂', '🥹', '😍', '🤔', '😎', '😭', '😡', '🥳', '🫡',
-    '👍', '👎', '❤️', '🔥', '🎉', '✨', '💯', '👀', '🙏', '✅',
-    '❌', '🚀', '💀', '🤡', '🥺', '🤝', '🫶', '⚡', '⭐', '💬',
+  // Official picker categories, parsed once from lib/data/emoji_data.dart.
+  static final List<(String key, List<_UnicodeEmoji> emojis)> _unicode = [
+    for (final e in kDiscordEmojiCategories.entries)
+      (
+        e.key,
+        [
+          for (final row in e.value.split('\n'))
+            if (row.isNotEmpty) _UnicodeEmoji.parse(row),
+        ],
+      ),
   ];
+  static const _categoryIcons = <String, IconData>{
+    'people': Icons.emoji_emotions_outlined,
+    'nature': Icons.pets_outlined,
+    'food': Icons.fastfood_outlined,
+    'activity': Icons.sports_esports_outlined,
+    'travel': Icons.directions_car_outlined,
+    'objects': Icons.lightbulb_outline_rounded,
+    'symbols': Icons.favorite_border_rounded,
+    'flags': Icons.flag_outlined,
+  };
+  static const _skinTones = ['', '🏻', '🏼', '🏽', '🏾', '🏿'];
+  // Session-wide like the official picker's "frequently used" row.
+  static final List<String> _recent = <String>[];
+  static int _skinTone = 0;
+
+  String _withTone(_UnicodeEmoji e) {
+    if (!e.diverse || _skinTone == 0) return e.surrogates;
+    final runes = e.surrogates.runes.toList();
+    // Modifier goes right after the base character (drop its FE0F).
+    final rest = runes.skip(1).toList();
+    if (rest.isNotEmpty && rest.first == 0xFE0F) rest.removeAt(0);
+    return String.fromCharCodes(
+        [runes.first, ..._skinTones[_skinTone].runes, ...rest]);
+  }
+
+  void _pickUnicode(BuildContext context, String surrogate) {
+    _recent
+      ..remove(surrogate)
+      ..insert(0, surrogate);
+    if (_recent.length > 24) _recent.removeLast();
+    Navigator.of(context).pop();
+    widget.onSelectEmoji(DiscordEmoji(name: surrogate));
+  }
+
+  /// Lazy grid of Twemoji images (1900+ emoji would stall a plain Wrap).
+  Widget _unicodeSliver(BuildContext context, List<String> items) {
+    return SliverGrid(
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 46,
+        mainAxisSpacing: 4,
+        crossAxisSpacing: 4,
+      ),
+      delegate: SliverChildBuilderDelegate(
+        (ctx, i) {
+          final s = items[i];
+          return InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _pickUnicode(context, s),
+            child: Center(
+              child: Image.network(
+                twemojiUrl(s),
+                width: 30,
+                height: 30,
+                cacheWidth: 72,
+                errorBuilder: (_, __, ___) =>
+                    Text(s, style: const TextStyle(fontSize: 24)),
+              ),
+            ),
+          );
+        },
+        childCount: items.length,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -1662,6 +1734,13 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
         }
 
         final anyLoading = orderedGuilds.any((g) => !g.emojisLoaded);
+        final unicodeHits = q.isEmpty
+            ? const <String>[]
+            : [
+                for (final (_, list) in _unicode)
+                  for (final e in list)
+                    if (e.names.any((n) => n.contains(q))) _withTone(e),
+              ];
 
         return DraggableScrollableSheet(
           expand: false,
@@ -1679,10 +1758,13 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              // Search Bar
+              // Search Bar + official skin-tone picker
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                child: TextField(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
                   controller: _searchCtrl,
                   onChanged: (v) => setState(() => _query = v),
                   style: TextStyle(color: p.textPrimary, fontSize: 14),
@@ -1710,6 +1792,33 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                       borderSide: BorderSide.none,
                     ),
                   ),
+                      ),
+                    ),
+                    PopupMenuButton<int>(
+                      tooltip: tr('膚色'),
+                      color: p.elevatedBg,
+                      onSelected: (v) => setState(() => _skinTone = v),
+                      itemBuilder: (_) => [
+                        for (var t = 0; t < _skinTones.length; t++)
+                          PopupMenuItem<int>(
+                            value: t,
+                            child: Image.network(
+                              twemojiUrl('\u{1F44F}${_skinTones[t]}'),
+                              width: 26,
+                              height: 26,
+                            ),
+                          ),
+                      ],
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Image.network(
+                          twemojiUrl('\u{1F44F}${_skinTones[_skinTone]}'),
+                          width: 26,
+                          height: 26,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
@@ -1767,12 +1876,13 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                               ),
                       );
                     }),
-                    _categoryPill(
-                      p: p,
-                      keyId: 'unicode',
-                      tooltip: tr('常用表情'),
-                      child: const Icon(Icons.emoji_emotions_outlined, size: 18),
-                    ),
+                    for (final (key, _) in _unicode)
+                      _categoryPill(
+                        p: p,
+                        keyId: 'u:$key',
+                        child: Icon(_categoryIcons[key] ?? Icons.circle,
+                            size: 18),
+                      ),
                   ],
                 ),
               ),
@@ -1781,10 +1891,13 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
 
               // Scrollable Emoji Sections
               Expanded(
-                child: ListView(
+                child: CustomScrollView(
                   controller: sCtrl,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  children: [
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
                     if (anyLoading && guildSections.isEmpty && appEmojis.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1838,40 +1951,42 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
                         const SizedBox(height: 18),
                       ],
 
-                    // 3. Standard Unicode Emojis
-                    if ((_selectedCategoryKey == null ||
-                            _selectedCategoryKey == 'unicode') &&
-                        q.isEmpty) ...[
-                      Text(
-                        tr('常用表情'),
-                        style: TextStyle(
-                          color: p.textSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildEmojiGrid(
-                        context,
-                        _commonUnicode
-                            .map((u) => DiscordEmoji(name: u))
-                            .toList(),
-                        allowAnim,
-                      ),
-                    ],
-
                     if (q.isNotEmpty &&
                         appEmojis.isEmpty &&
-                        guildSections.isEmpty)
+                        guildSections.isEmpty &&
+                        unicodeHits.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 32),
                         child: Center(
                           child: Text(
-                            trf('找不到符合「{0}」的伺服器或應用程式表情', [_query]),
+                            trf('找不到符合「{0}」的表情符號', [_query]),
                             style: TextStyle(color: p.textMuted, fontSize: 13.5),
                           ),
                         ),
                       ),
+                        ]),
+                      ),
+                    ),
+                    // 3. Official unicode emoji: recent + 8 categories.
+                    if (q.isNotEmpty && unicodeHits.isNotEmpty) ...[
+                      _sliverHeader(p, tr('表情符號')),
+                      _sliverPad(_unicodeSliver(context, unicodeHits)),
+                    ],
+                    if (q.isEmpty &&
+                        _selectedCategoryKey == null &&
+                        _recent.isNotEmpty) ...[
+                      _sliverHeader(p, tr('最近使用')),
+                      _sliverPad(_unicodeSliver(context, List.of(_recent))),
+                    ],
+                    if (q.isEmpty)
+                      for (final (key, list) in _unicode)
+                        if (_selectedCategoryKey == null ||
+                            _selectedCategoryKey == 'u:$key') ...[
+                          _sliverHeader(p, _categoryTitle(key)),
+                          _sliverPad(_unicodeSliver(
+                              context, [for (final e in list) _withTone(e)])),
+                        ],
+                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
                 ),
               ),
@@ -1881,6 +1996,37 @@ class _DiscordEmojiPickerSheetState extends State<_DiscordEmojiPickerSheet> {
       },
     );
   }
+
+  String _categoryTitle(String key) => switch (key) {
+        'people' => tr('人物'),
+        'nature' => tr('自然'),
+        'food' => tr('食物'),
+        'activity' => tr('活動'),
+        'travel' => tr('旅遊'),
+        'objects' => tr('物品'),
+        'symbols' => tr('符號'),
+        'flags' => tr('旗幟'),
+        _ => key,
+      };
+
+  Widget _sliverHeader(DiscordPalette p, String title) => SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+        sliver: SliverToBoxAdapter(
+          child: Text(
+            title,
+            style: TextStyle(
+              color: p.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      );
+
+  Widget _sliverPad(Widget sliver) => SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        sliver: sliver,
+      );
 
   Widget _categoryPill({
     required DiscordPalette p,
@@ -2242,6 +2388,23 @@ class HiddenChannelLockView extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _UnicodeEmoji {
+  final String surrogates;
+  final List<String> names;
+  final bool diverse;
+
+  const _UnicodeEmoji(this.surrogates, this.names, this.diverse);
+
+  factory _UnicodeEmoji.parse(String row) {
+    final f = row.split('\t');
+    return _UnicodeEmoji(
+      f[0],
+      f.length > 1 ? f[1].split(',') : const [],
+      f.length > 2 && f[2] == '1',
     );
   }
 }

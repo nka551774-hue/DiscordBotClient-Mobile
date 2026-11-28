@@ -48,6 +48,18 @@ String trf(String zhTemplate, List<Object?> args) {
 }
 
 const Map<String, String> _en = {
+  '表情符號': 'Emoji',
+  '最近使用': 'Frequently Used',
+  '膚色': 'Skin Tone',
+  '人物': 'People',
+  '自然': 'Nature',
+  '食物': 'Food',
+  '活動': 'Activities',
+  '旅遊': 'Travel',
+  '物品': 'Objects',
+  '符號': 'Symbols',
+  '旗幟': 'Flags',
+  '找不到符合「{0}」的表情符號': 'No emoji found for "{0}"',
   '伺服器': 'Servers',
   'Dark (深色)': 'Dark',
   '查詢使用者': 'Look Up User',
@@ -490,6 +502,18 @@ const Map<String, String> _en = {
 };
 
 const Map<String, String> _ja = {
+  '表情符號': '絵文字',
+  '最近使用': 'よく使う絵文字',
+  '膚色': '肌の色',
+  '人物': '人',
+  '自然': '自然',
+  '食物': '食べ物',
+  '活動': 'アクティビティ',
+  '旅遊': '旅行',
+  '物品': '物',
+  '符號': '記号',
+  '旗幟': '旗',
+  '找不到符合「{0}」的表情符號': '「{0}」に一致する絵文字はありません',
   '伺服器': 'サーバー',
   'Dark (深色)': 'ダーク',
   '查詢使用者': 'ユーザーを検索',
