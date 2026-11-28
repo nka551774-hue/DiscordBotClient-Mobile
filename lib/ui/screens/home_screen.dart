@@ -1106,9 +1106,9 @@ class _HomeScreenState extends State<HomeScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Left Vertical Server Rail (68px)
+              // Left Vertical Server Rail (official GUILD_LIST_WIDTH 72)
               SizedBox(
-                width: 68,
+                width: 72,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(0, 6, 0, 12),
                   children: [
@@ -1133,15 +1133,15 @@ class _HomeScreenState extends State<HomeScreen>
                             ),
                             const Spacer(),
                             Container(
-                              width: 46,
-                              height: 46,
+                              width: 48,
+                              height: 48,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: isDmMode
                                     ? DiscordPalette.blurple
-                                    : const Color(0xFF1D1E25),
+                                    : p.elevatedBg,
                                 borderRadius:
-                                    BorderRadius.circular(isDmMode ? 14 : 23),
+                                    BorderRadius.circular(isDmMode ? 16 : 24),
                               ),
                               child: const DiscordGlyph(
                                 DiscordGlyphType.chat,
@@ -1203,7 +1203,7 @@ class _HomeScreenState extends State<HomeScreen>
                       final mentions = ctrl.guildMentionCount(g);
 
                       return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.5),
+                        padding: const EdgeInsets.symmetric(vertical: 4),
                         child: GestureDetector(
                           onTap: () => ctrl.selectGuild(g.id),
                           onLongPress: () {
@@ -1228,22 +1228,26 @@ class _HomeScreenState extends State<HomeScreen>
                               Stack(
                                 clipBehavior: Clip.none,
                                 children: [
-                              Container(
-                                width: 46,
-                                height: 46,
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeOutCubic,
+                                width: 48,
+                                height: 48,
                                 clipBehavior: Clip.antiAlias,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   color: selected
                                       ? DiscordPalette.blurple
-                                      : const Color(0xFF1E1F26),
-                                  borderRadius: BorderRadius.circular(14),
+                                      : p.elevatedBg,
+                                  // Official: circle, 16 radius when selected.
+                                  borderRadius: BorderRadius.circular(
+                                      selected ? 16 : 24),
                                 ),
                                 child: iconUrl != null
                                     ? Image.network(
                                         iconUrl,
-                                        width: 46,
-                                        height: 46,
+                                        width: 48,
+                                        height: 48,
                                         cacheWidth: iconPx,
                                         fit: BoxFit.cover,
                                         errorBuilder: (_, __, ___) => Text(
@@ -1971,19 +1975,19 @@ class _HomeScreenState extends State<HomeScreen>
         InkWell(
           onTap: () => ctrl.toggleCategoryCollapse(cat.id),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 14, 6),
+            padding: const EdgeInsets.fromLTRB(16, 12, 14, 4),
             child: Row(
               children: [
                 Flexible(
                   child: Text(
-                    cat.name.toUpperCase(),
+                    cat.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: p.textMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.3,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 18 / 14,
                     ),
                   ),
                 ),
@@ -2307,10 +2311,8 @@ class _HomeScreenState extends State<HomeScreen>
                                 : ((selected || unread)
                                     ? Colors.white
                                     : p.textMuted)),
-                        fontSize: 15.5,
-                        fontWeight: (selected || unread || isConnectedVoice)
-                            ? FontWeight.w600
-                            : FontWeight.w500,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -3553,7 +3555,7 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
       children: [
         // Top Chat Header
         Container(
-          height: 52,
+          height: 56,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
             color: p.chatBg,
@@ -4210,8 +4212,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                           )
                       : null,
                   child: Container(
-                    width: 38,
-                    height: 38,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: p.inputBg,
                       shape: BoxShape.circle,
@@ -4230,8 +4232,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                           const TextSelection.collapsed(offset: 1);
                     },
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: 40,
+                      height: 40,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: p.inputBg,
@@ -4329,8 +4331,8 @@ class _DiscordChatPaneState extends State<_DiscordChatPane> {
                   GestureDetector(
                     onTap: (!canSend || _sending) ? null : () => _send(),
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: 40,
+                      height: 40,
                       alignment: Alignment.center,
                       decoration: const BoxDecoration(
                         color: DiscordPalette.blurple,

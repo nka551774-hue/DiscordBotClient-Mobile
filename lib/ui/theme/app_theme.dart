@@ -50,45 +50,60 @@ class DiscordPalette {
 
   Color get brandColor => activeThemeOverrides?.brand ?? blurple;
 
-  /// 2025/2026 Discord Mobile "Onyx" (oled = true) & "Ash" (oled = false),
-  /// dynamically overridden when Vencord Online Themes or QuickCSS are active.
+  /// Official mobile semantic tokens (from the iOS app's design system):
+  /// oled = false -> "Dark" (default dark theme), oled = true -> "Onyx".
+  /// Vencord Online Themes / QuickCSS can still override each one.
+  // BACKGROUND_BASE_LOWEST
   Color get railBg =>
       activeThemeOverrides?.railBg ??
-      (oled ? const Color(0xFF000000) : const Color(0xFF1E1F22));
+      (oled ? const Color(0xFF000000) : const Color(0xFF121214));
+  // BACKGROUND_BASE_LOWER
   Color get sidebarBg =>
       activeThemeOverrides?.sidebarBg ??
-      (oled ? const Color(0xFF14151A) : const Color(0xFF2B2D31));
+      (oled ? const Color(0xFF070709) : const Color(0xFF1A1A1E));
+  // BACKGROUND_MOBILE_PRIMARY
   Color get chatBg =>
       activeThemeOverrides?.chatBg ??
-      (oled ? const Color(0xFF101115) : const Color(0xFF313338));
+      (oled ? const Color(0xFF000000) : const Color(0xFF1C1D23));
+  // BACKGROUND_FLOATING (sheets)
   Color get profileBg =>
       activeThemeOverrides?.profileBg ??
-      (oled ? const Color(0xFF0C0D11) : const Color(0xFF18191C));
+      (oled ? const Color(0xFF131318) : const Color(0xFF26272F));
+  // BG_BASE_TERTIARY (tab bar)
   Color get bottomBarBg =>
       activeThemeOverrides?.bottomBarBg ??
-      (oled ? const Color(0xFF181920) : const Color(0xFF1E1F22));
+      (oled ? const Color(0xFF000000) : const Color(0xFF131318));
+  // CARD_SECONDARY_BG
   Color get cardBg =>
       activeThemeOverrides?.cardBg ??
-      (oled ? const Color(0xFF1A1B22) : const Color(0xFF2B2D31));
+      (oled ? const Color(0xFF0C0C10) : const Color(0xFF212229));
+  // BG_SURFACE_OVERLAY (rows on sheets)
   Color get elevatedBg =>
       activeThemeOverrides?.elevatedBg ??
-      (oled ? const Color(0xFF22232B) : const Color(0xFF1E1F22));
+      (oled ? const Color(0xFF212229) : const Color(0xFF2C2D35));
+  // BACKGROUND_MODIFIER_SELECTED (#4d505b @ 60%)
   Color get selectedChannelBg =>
-      activeThemeOverrides?.selectedChannelBg ??
-      (oled ? const Color(0xFF262831) : const Color(0xFF393C43));
+      activeThemeOverrides?.selectedChannelBg ?? const Color(0x994D505B);
+  // REDESIGN_CHAT_INPUT_BACKGROUND
   Color get inputBg =>
       activeThemeOverrides?.inputBg ??
-      (oled ? const Color(0xFF22232B) : const Color(0xFF383A40));
+      (oled ? const Color(0x1ABCBCF0) : const Color(0x1F6C6F7C));
   Color get loginInputBg => const Color(0xFF1E1F22);
+  // BORDER_SUBTLE
   Color get border =>
       activeThemeOverrides?.border ??
-      (oled ? const Color(0xFF24252E) : const Color(0xFF3F4147));
+      (oled ? const Color(0x246C6F7C) : const Color(0x1F6C6F7C));
+  // HEADER_PRIMARY
   Color get textPrimary =>
-      activeThemeOverrides?.textPrimary ?? const Color(0xFFF2F3F5);
+      activeThemeOverrides?.textPrimary ??
+      (oled ? const Color(0xFFECEDEF) : const Color(0xFFE4E5E8));
+  // TEXT_SECONDARY
   Color get textSecondary =>
-      activeThemeOverrides?.textSecondary ?? const Color(0xFFB5BAC1);
+      activeThemeOverrides?.textSecondary ??
+      (oled ? const Color(0xFFA8AAB4) : const Color(0xFF9597A3));
+  // TEXT_MUTED
   Color get textMuted =>
-      activeThemeOverrides?.textMuted ?? const Color(0xFF8E929B);
+      activeThemeOverrides?.textMuted ?? const Color(0xFF818491);
 }
 
 ThemeData buildAppTheme({required bool oledBlack}) {
@@ -120,7 +135,7 @@ ThemeData buildAppTheme({required bool oledBlack}) {
     ),
     dividerColor: p.border,
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: const Color(0xFF1C1D24),
+      backgroundColor: p.elevatedBg,
       contentTextStyle: TextStyle(color: p.textPrimary),
       behavior: SnackBarBehavior.floating,
     ),

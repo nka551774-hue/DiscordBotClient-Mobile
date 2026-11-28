@@ -631,7 +631,7 @@ class DiscordSettingsScreen extends StatelessWidget {
                   title: Text(tr('外觀主題'),
                       style: TextStyle(color: p.textPrimary, fontSize: 15)),
                   subtitle: Text(
-                    eco.oledBlackMode ? tr('Onyx (純黑)') : tr('Ash (深灰)'),
+                    eco.oledBlackMode ? tr('Onyx (純黑)') : tr('Dark (深色)'),
                     style: TextStyle(color: p.textMuted, fontSize: 12.5),
                   ),
                   trailing: Switch(
