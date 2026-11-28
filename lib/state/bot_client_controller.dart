@@ -768,14 +768,22 @@ class BotClientController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  Timer? _dmSaveTimer;
+
+  /// Debounced: every DM message used to re-serialize and write all DMs.
   Future<void> _savePersistedDmChannels() async {
     if (!vencord.getSetting<bool>('BotClient', 'saveDirectMessage', true)) {
       return;
     }
     final botId = _activeAccount?.id;
     if (botId == null) return;
-    final list = _dmChannels.values.take(80).map((c) => c.toJson()).toList();
-    await _prefs?.setString('$_kDmChannelsPrefix$botId', jsonEncode(list));
+    _dmSaveTimer?.cancel();
+    _dmSaveTimer = Timer(const Duration(seconds: 2), () {
+      if (_activeAccount?.id != botId) return;
+      final list =
+          _dmChannels.values.take(80).map((c) => c.toJson()).toList();
+      _prefs?.setString('$_kDmChannelsPrefix$botId', jsonEncode(list));
+    });
   }
 
   /// Fetches and caches the bot's own Application Emojis (`GET /applications/{id}/emojis`)

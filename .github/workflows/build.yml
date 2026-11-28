@@ -189,17 +189,20 @@ jobs:
       - name: Create / Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.10.17
+          tag_name: v1.10.18
           make_latest: true
-          name: "DiscordBotClient Mobile v1.10.17 (Android APK & iOS IPA)"
+          name: "DiscordBotClient Mobile v1.10.18 (Android APK & iOS IPA)"
           body: |
             ## ⬇️ 下載
-            - **Android（arm64，推薦）**：[DiscordBotClient-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.17/DiscordBotClient-arm64-v8a.apk)
-            - **Android（通用版）**：[DiscordBotClient-universal.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.17/DiscordBotClient-universal.apk)
-            - **iOS**：[DiscordBotClient-ios.ipa](https://github.com/${{ github.repository }}/releases/download/v1.10.17/DiscordBotClient-ios.ipa)
+            - **Android（arm64，推薦）**：[DiscordBotClient-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.18/DiscordBotClient-arm64-v8a.apk)
+            - **Android（通用版）**：[DiscordBotClient-universal.apk](https://github.com/${{ github.repository }}/releases/download/v1.10.18/DiscordBotClient-universal.apk)
+            - **iOS**：[DiscordBotClient-ios.ipa](https://github.com/${{ github.repository }}/releases/download/v1.10.18/DiscordBotClient-ios.ipa)
 
-            ### v1.10.17 更新內容
-            - **常用表情保留**：表情選擇器的「最近使用」會儲存在手機上，app 重開後依然保留；伺服器與應用程式的自訂表情也會記錄在常用表情中（最多 24 個）。
+            ### v1.10.18 更新內容
+            - **啟動與大型伺服器更流暢**：Gateway 大型封包（READY、GUILD_CREATE 等）改在背景執行緒解析，畫面不再因載入大量伺服器資料而卡頓；封包依序處理，舊連線的殘留封包會被丟棄。
+            - **更省記憶體**：壓縮串流緩衝改用位元組緩衝區，大型封包的記憶體用量降為原本約八分之一。
+            - **更少寫入**：收到私訊時的私訊列表儲存改為 2 秒合併寫入一次。
+            - **程式整理**：移除多餘的 import。
 
           files: release-assets/*
           draft: false

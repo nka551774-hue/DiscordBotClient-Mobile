@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
+import 'dart:typed_data' as td;
 
 import '../models/discord_models.dart';
 
@@ -62,8 +64,13 @@ class DiscordGatewayService {
   int _reconnectAttempts = 0;
 
   // Zlib stream state
-  final List<int> _compressedFrameBuffer = <int>[];
-  final List<int> _inflatedBuffer = <int>[];
+  // td.BytesBuilder: List<int> would store 8 bytes per byte and copy on addAll.
+  final td.BytesBuilder _compressedFrameBuffer = td.BytesBuilder(copy: false);
+  final td.BytesBuilder _inflatedBuffer = td.BytesBuilder(copy: false);
+  // Packets are handled strictly in arrival order; big ones decode off-thread.
+  Future<void> _packetQueue = Future<void>.value();
+  int _connectionGen = 0;
+  static const int _offThreadBytes = 256 * 1024;
   ByteConversionSink? _zlibSink;
 
   GatewayConnectionState _state = GatewayConnectionState.disconnected;
@@ -126,6 +133,7 @@ class DiscordGatewayService {
   }
 
   void _initZlibStream() {
+    _connectionGen++;
     _compressedFrameBuffer.clear();
     _inflatedBuffer.clear();
     _zlibSink?.close();
@@ -133,7 +141,7 @@ class DiscordGatewayService {
     if (_useZlibStream) {
       _zlibSink = zlib.decoder.startChunkedConversion(
         _BytesCollectorSink((chunk) {
-          _inflatedBuffer.addAll(chunk);
+          _inflatedBuffer.add(chunk);
         }),
       );
     }
@@ -143,31 +151,31 @@ class DiscordGatewayService {
     if (_disposed) return;
 
     if (frame is String) {
-      _handleJsonPayload(frame);
+      _enqueuePacket(frame);
       return;
     }
 
     if (frame is List<int>) {
       if (!_useZlibStream) {
-        try {
-          _handleJsonPayload(utf8.decode(frame));
-        } catch (_) {}
+        _enqueuePacket(
+            frame is td.Uint8List ? frame : td.Uint8List.fromList(frame));
         return;
       }
 
-      _compressedFrameBuffer.addAll(frame);
-      final len = _compressedFrameBuffer.length;
-      final hasZlibFlushSuffix = len >= 4 &&
-          _compressedFrameBuffer[len - 4] == 0x00 &&
-          _compressedFrameBuffer[len - 3] == 0x00 &&
-          _compressedFrameBuffer[len - 2] == 0xFF &&
-          _compressedFrameBuffer[len - 1] == 0xFF;
+      _compressedFrameBuffer.add(frame);
+      // The zlib flush suffix ends the last frame of a message.
+      final tail = frame.length >= 4 ? frame : _compressedFrameBuffer.toBytes();
+      final n = tail.length;
+      final hasZlibFlushSuffix = n >= 4 &&
+          tail[n - 4] == 0x00 &&
+          tail[n - 3] == 0x00 &&
+          tail[n - 2] == 0xFF &&
+          tail[n - 1] == 0xFF;
 
       if (!hasZlibFlushSuffix) return;
 
       try {
-        _zlibSink!.add(List<int>.from(_compressedFrameBuffer));
-        _compressedFrameBuffer.clear();
+        _zlibSink!.add(_compressedFrameBuffer.takeBytes());
 
         if (_inflatedBuffer.isEmpty) {
           // Some platform zlib wrappers buffer until stream close; fallback cleanly to plain JSON
@@ -176,9 +184,7 @@ class DiscordGatewayService {
           return;
         }
 
-        final jsonStr = utf8.decode(_inflatedBuffer);
-        _inflatedBuffer.clear();
-        _handleJsonPayload(jsonStr);
+        _enqueuePacket(_inflatedBuffer.takeBytes());
       } catch (_) {
         // Fallback to uncompressed JSON mode seamlessly
         _useZlibStream = false;
@@ -187,13 +193,42 @@ class DiscordGatewayService {
     }
   }
 
-  void _handleJsonPayload(String rawJson) {
-    Map<String, dynamic> packet;
-    try {
-      packet = jsonDecode(rawJson) as Map<String, dynamic>;
-    } catch (_) {
-      return;
-    }
+  /// [payload] is a JSON String or UTF-8 bytes. Large payloads (GUILD_CREATE,
+  /// READY) are decoded in a background isolate so the UI never stutters.
+  void _enqueuePacket(Object payload) {
+    final gen = _connectionGen;
+    final size =
+        payload is String ? payload.length : (payload as td.Uint8List).length;
+    _packetQueue = _packetQueue.then((_) async {
+      Map<String, dynamic> packet;
+      try {
+        if (size > _offThreadBytes) {
+          try {
+            packet = await _decodeOffThread(payload);
+          } catch (_) {
+            packet = _decodePacket(payload);
+          }
+        } else {
+          packet = _decodePacket(payload);
+        }
+      } catch (_) {
+        return;
+      }
+      // Drop packets from a socket that has since been replaced.
+      if (_disposed || gen != _connectionGen) return;
+      _handlePacket(packet);
+    });
+  }
+
+  static Map<String, dynamic> _decodePacket(Object payload) =>
+      jsonDecode(payload is String ? payload : utf8.decode(payload as td.Uint8List))
+          as Map<String, dynamic>;
+
+  // Static so the isolate closure captures only [payload], never `this`.
+  static Future<Map<String, dynamic>> _decodeOffThread(Object payload) =>
+      Isolate.run(() => _decodePacket(payload));
+
+  void _handlePacket(Map<String, dynamic> packet) {
 
     final int op = packet['op'] as int? ?? -1;
     final int? seq = packet['s'] as int?;
