@@ -65,10 +65,10 @@ class DiscordPalette {
   Color get chatBg =>
       activeThemeOverrides?.chatBg ??
       (oled ? const Color(0xFF000000) : const Color(0xFF1C1D23));
-  // BACKGROUND_FLOATING (sheets)
+  // BG_BASE_SECONDARY (ACTION_SHEET_BACKGROUND_COLOR)
   Color get profileBg =>
       activeThemeOverrides?.profileBg ??
-      (oled ? const Color(0xFF131318) : const Color(0xFF26272F));
+      (oled ? const Color(0xFF000000) : const Color(0xFF1C1D23));
   // BG_BASE_TERTIARY (tab bar)
   Color get bottomBarBg =>
       activeThemeOverrides?.bottomBarBg ??
@@ -77,10 +77,10 @@ class DiscordPalette {
   Color get cardBg =>
       activeThemeOverrides?.cardBg ??
       (oled ? const Color(0xFF0C0C10) : const Color(0xFF212229));
-  // BG_SURFACE_OVERLAY (rows on sheets)
+  // CARD_PRIMARY_BG (cards / grouped rows on sheets)
   Color get elevatedBg =>
       activeThemeOverrides?.elevatedBg ??
-      (oled ? const Color(0xFF212229) : const Color(0xFF2C2D35));
+      (oled ? const Color(0xFF131318) : const Color(0xFF26272F));
   // BACKGROUND_MODIFIER_SELECTED (#4d505b @ 60%)
   Color get selectedChannelBg =>
       activeThemeOverrides?.selectedChannelBg ?? const Color(0x994D505B);
@@ -144,7 +144,7 @@ ThemeData buildAppTheme({required bool oledBlack}) {
       modalBackgroundColor: p.profileBg,
       surfaceTintColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
     ),
   );

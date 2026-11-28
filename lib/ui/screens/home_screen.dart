@@ -867,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: p.sidebarBg,
+      backgroundColor: p.profileBg,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),

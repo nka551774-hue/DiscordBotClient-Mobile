@@ -216,7 +216,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
           padding: const EdgeInsets.all(16),
           child: Container(
             decoration: BoxDecoration(
-              color: p.sidebarBg,
+              color: p.elevatedBg,
               borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
@@ -390,6 +390,9 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
       memberRoles.sort((a, b) => b.position.compareTo(a.position));
     }
 
+    // Official BANNER_ASPECT_RATIO 2.86.
+    final bannerHeight = MediaQuery.of(context).size.width / 2.86;
+
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.72,
@@ -400,7 +403,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
           decoration: BoxDecoration(
             color: sheetBg,
             borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(28)),
+                const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           clipBehavior: Clip.antiAlias,
           child: ListView(
@@ -409,7 +412,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
             children: [
               // 1. Banner + Close / More Actions + Overlapping Avatar
               SizedBox(
-                height: 176,
+                height: bannerHeight + 46,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -425,7 +428,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                       child: DiscordBannerImage(
                         url: bannerUrl,
                         color: bannerColor,
-                        height: 124,
+                        height: bannerHeight,
                       ),
                     ),
                     // Top-left Close Button
@@ -467,13 +470,13 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                           clipBehavior: Clip.none,
                           children: [
                             Container(
-                              padding: const EdgeInsets.all(5),
+                              padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
                                 color: sheetBg,
                                 shape: BoxShape.circle,
                               ),
                               child: CircleAvatar(
-                                radius: 42,
+                                radius: 40,
                                 backgroundImage: NetworkImage(avatarUrl),
                               ),
                             ),
@@ -481,8 +484,8 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                               Positioned(
                                 left: -4,
                                 top: -4,
-                                width: 102,
-                                height: 102,
+                                width: 100,
+                                height: 100,
                                 child: IgnorePointer(
                                   child: Image.network(
                                     _user.avatarDecorationUrl!,
@@ -746,7 +749,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
-                          color: p.sidebarBg,
+                          color: p.elevatedBg,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: p.border, width: 0.7),
                         ),
@@ -781,7 +784,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(
-                        color: p.sidebarBg,
+                        color: p.elevatedBg,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: p.border, width: 0.7),
                       ),
@@ -860,7 +863,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
-                          color: p.sidebarBg,
+                          color: p.elevatedBg,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: p.border, width: 0.7),
                         ),
@@ -1018,7 +1021,7 @@ class _DiscordUserProfileModalState extends State<_DiscordUserProfileModal> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(15, 13, 15, 8),
       decoration: BoxDecoration(
-        color: p.sidebarBg,
+        color: p.elevatedBg,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: p.border, width: 0.7),
       ),

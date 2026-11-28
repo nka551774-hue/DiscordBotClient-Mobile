@@ -236,7 +236,7 @@ class _MessageTileState extends State<MessageTile> {
                             height: 42,
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
-                              color: palette.sidebarBg,
+                              color: palette.elevatedBg,
                               shape: BoxShape.circle,
                             ),
                             child:
@@ -255,7 +255,7 @@ class _MessageTileState extends State<MessageTile> {
                           height: 42,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: palette.sidebarBg,
+                            color: palette.elevatedBg,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(Icons.add_reaction_outlined,
@@ -451,7 +451,7 @@ class _MessageTileState extends State<MessageTile> {
       out.add(Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: palette.sidebarBg,
+          color: palette.elevatedBg,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: rows),
